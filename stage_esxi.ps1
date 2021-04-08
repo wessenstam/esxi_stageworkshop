@@ -248,9 +248,9 @@ New-PSDrive -Location $datastore1 -Name DS1 -PSProvider VimDatastore -Root "\" -
 New-PSDrive -Location $datastore2 -Name DS2 -PSProvider VimDatastore -Root "\" -Confirm:$false | Out-Null
 
 # Copy the needed files to the Images Datastore
-$files_arr=@('CentOS7.iso','Windows2016.iso','Nutanix-VirtIO-1.1.5.iso','Citrix_Virtual_Apps_and_Desktops_7_1912.iso')
+$files_arr=@('CentOS7.iso','Windows2016.iso','Nutanix-VirtIO-1.1.5.iso','Citrix_Virtual_Apps_and_Desktops_7_1912.iso',"AutoAD.vmdk")
 foreach ($file in $files_arr){
-    Copy-DatastoreItem -Item DS:\$file -Destination DS2:\ISO\ -Confirm:$false 
+    Copy-DatastoreItem -Item DS:\$file -Destination DS2:\ -Confirm:$false 
 }
 
 # Remove the two drives so the cleanup happens
@@ -269,12 +269,22 @@ connect-viserver $VCENTER -User administrator@vsphere.local -Password $password 
 
 # Need to create a Customisation Profile or we can not set Static IP
 New-OSCustomizationSpec -OrgName "TE" -OSType Windows -Name PowerCliOnly  -Workgroup "Deployment" -FullName "Administrator" -Confirm:$false
-Get-OSCustomizationNicMapping -OSCustomizationSpec PowerCliOnly | Set-OSCustomizationNicMapping -Position 1 -IpMode UseStaticIP -IpAddress $AutoAD -SubnetMask 255.255.255.128 -DefaultGateway $GW -Dns 8.8.8.8 -Confirm:$false
+#Get-OSCustomizationNicMapping -OSCustomizationSpec PowerCliOnly | Set-OSCustomizationNicMapping -Position 1 -IpMode UseStaticIP -IpAddress $AutoAD -SubnetMask 255.255.255.128 -DefaultGateway $GW -Dns 8.8.8.8 -Confirm:$false
 
-# Deploy the AutoAD OVA to one of the vCenter controlled hosts. DRS will take care of the rest
-$auto_ovapath=http://
-Import-vApp -Source $auto_ovapath -Name AutoAD -VMHost $ESXi_Host -Datastore vmContainer1 -DiskStorageFormat thin
+# Deploy an AutoAD OVA and add the existing AutoAD.vdmk. DRS will take care of the rest.
+New-VM -VMHost $ESXi_Host -Name "AutoAD_Temp" -Datastore 'Images' -NumCPU 2 -CoresPerSocket 1 -MemoryGB 4 -SkipHardDisks -Confirm:$false
+New-HardDisk -DiskPath "[Images] AutoAD.vmdk" -VM "AutoAD"
 
+# Transform the VM into a template as we need to set static IP
+New-Template -Name "AutoAD-Templ" -VM "AutoAD_Temp"
+
+# Deploy the final AutoAD with Static IP
+New-VM -VMHost $ESXi_Host -Name "AutoAD" -Datastore 'vmContainer1' -Template "AutoAD-Templ" -OSCustomizationSpec "PowerCliOnly" | Set-OSCustomizationNicMapping -Position 1 -IpMode UseStaticIP -IpAddress $AutoAD -SubnetMask 255.255.255.128 -DefaultGateway $GW -Dns 8.8.8.8 -Confirm:$false
+
+# Close the VMware connection
+disconnect-viserver * -Confirm:$false
+
+# ********************* PE level ***********************************************
 # Confiure PE to use AutoAD for authentication
 
 
