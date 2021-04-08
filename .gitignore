@@ -1,0 +1,6 @@
+*.dotnet
+*-in
+*-out
+*.pwsh
+*-socket
+AutoAD.ova
