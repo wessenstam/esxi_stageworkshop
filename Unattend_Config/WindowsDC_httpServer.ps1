@@ -31,7 +31,7 @@ $port = "8000"
 
 $listener = New-Object System.Net.HttpListener
 
-$ip = Get-NetIpaddress -InterfaceAlias Ethernet -AddressFamily IPv4 | select -ExpandProperty IPAddress 
+$ip = Get-NetIpaddress -InterfaceAlias Ethernet0 -AddressFamily IPv4 | select -ExpandProperty IPAddress 
 
 $url = -join ("http://",$ip,":",$port,"/")
 

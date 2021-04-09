@@ -31,6 +31,15 @@ Set-AutoLogon -DefaultUsername "ntnxlab\administrator" -DefaultPassword "nutanix
 Set-Location -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce'
 Set-ItemProperty -Path . -Name addDomainUsers -Value 'C:\WINDOWS\system32\WindowsPowerShell\v1.0\powershell.exe "c:\Config_Scripts\WindowsDC_AddUsers.ps1"'
 #Set-ItemProperty -Path . -Name addDomainUsers -Value "c:\Config_Scripts\WindowsDC_AddUsers.ps1"
+
+# Change the Local IP address to .41 as it should for HPOC
+$old_ip=(Get-NetIPAddress -AddressFamily IPv4 -InterfaceAlias Ethernet0).IPaddress
+$new_ip=$old_ip.Substring(0,$old_ip.length-2)+"41"
+$gateway=$old_ip.Substring(0,$old_ip.length-2)+"1"
+Get-NetAdapter | ? {$_.Status -eq "up"} |New-NetIPAddress -AddressFamily IPv4 -IPAddress $new_ip -PrefixLength 25 -DefaultGateway $gateway
+# Configure the DNS client server IP addresses
+Get-NetAdapter | ? {$_.Status -eq "up"} | Set-DnsClientServerAddress -ServerAddresses "8.8.8.8,8.8.4.4"
+
 Restart-Computer
 
 #start-sleep -s 180
