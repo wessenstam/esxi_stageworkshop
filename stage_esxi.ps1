@@ -280,9 +280,10 @@ connect-viserver $VCENTER -User administrator@vsphere.local -Password $password 
 
 # Deploy an AutoAD OVA and add the existing AutoAD.vdmk. DRS will take care of the rest.
 echo "Creating AutoAD VM with the earlier uploaded vmdk as its drive"
-New-VM -VMHost $ESXi_Host -Name "AutoAD" -NumCPU 2 -CoresPerSocket 1 -MemoryGB 4 -Confirm:$false
-Get-HardDisk -VM "AutoAD" | Remove- -confirm:$false
-New-HardDisk -DiskPath "[Images] AutoAD.vmdk" -VM "AutoAD"
+New-VM -VMHost $ESXi_Host -Name "AutoAD_Temp" -NumCPU 2 -CoresPerSocket 1 -MemoryGB 4 -Confirm:$false
+Get-HardDisk -VM "AutoAD_Temp" | Remove- -confirm:$false
+New-HardDisk -DiskPath "[Images] AutoAD.vmdk" -VM "AutoAD_Temp"
+New-VM -Name AutoAD -VM AutoAD_temp -NetworkName 'VM Network'
 
 
 # Close the VMware connection
