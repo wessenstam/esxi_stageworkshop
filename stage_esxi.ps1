@@ -278,23 +278,12 @@ disconnect-viserver * -Confirm:$false | Out-Null
 echo "Connecting to the vCenter for next configuration steps"
 connect-viserver $VCENTER -User administrator@vsphere.local -Password $password | Out-Null
 
-# Need to create a Customisation Profile or we can not set Static IP
-New-OSCustomizationSpec -OrgName "TE" -OSType Windows -Name PowerCliOnly  -Workgroup "Deployment" -FullName "Administrator" -Confirm:$false
-#Get-OSCustomizationNicMapping -OSCustomizationSpec PowerCliOnly | Set-OSCustomizationNicMapping -Position 1 -IpMode UseStaticIP -IpAddress $AutoAD -SubnetMask 255.255.255.128 -DefaultGateway $GW -Dns 8.8.8.8 -Confirm:$false
-
 # Deploy an AutoAD OVA and add the existing AutoAD.vdmk. DRS will take care of the rest.
-echo "Creating Temporary AutoAD VM with the earlier uploaded vmdk as its drive"
-New-VM -VMHost $ESXi_Host -Name "AutoAD_Temp" -NumCPU 2 -CoresPerSocket 1 -MemoryGB 4 -Confirm:$false
-Get-HardDisk -VM "AutoAD_Temp" | Remove- -confirm:$false
-New-HardDisk -DiskPath "[Images] AutoAD.vmdk" -VM "AutoAD_Temp"
+echo "Creating AutoAD VM with the earlier uploaded vmdk as its drive"
+New-VM -VMHost $ESXi_Host -Name "AutoAD" -NumCPU 2 -CoresPerSocket 1 -MemoryGB 4 -Confirm:$false
+Get-HardDisk -VM "AutoAD" | Remove- -confirm:$false
+New-HardDisk -DiskPath "[Images] AutoAD.vmdk" -VM "AutoAD"
 
-# Transform the VM into a template as we need to set static IP
-echo "Transforming the VM into a template"
-New-Template -Name "AutoAD-Templ" -VM "AutoAD_Temp"
-
-# Deploy the final AutoAD with Static IP
-echo "Deploying the Final AutoAD with a static IP"
-New-VM -VMHost $ESXi_Host -Name "AutoAD" -Datastore 'vmContainer1' -Template "AutoAD-Templ" -OSCustomizationSpec "PowerCliOnly" | Set-OSCustomizationNicMapping -Position 1 -IpMode UseStaticIP -IpAddress $AutoAD -SubnetMask 255.255.255.128 -DefaultGateway $GW -Dns 8.8.8.8 -Confirm:$false
 
 # Close the VMware connection
 disconnect-viserver * -Confirm:$false
