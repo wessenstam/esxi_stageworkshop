@@ -1,12 +1,12 @@
 # Set some environmental variables
-Set-PowerCLIConfiguration -InvalidCertificateAction:Ignore -confirm:$false | Out-Null
+Set-PowerCLIConfiguration -InvalidCertificateAction:Ignore -DefaultVIServerMode:Multiple -confirm:$false | Out-Null
 Set-PowerCLIConfiguration -Scope User -ParticipateInCEIP:$false -confirm:$false | Out-Null
 
 
 # **********************************************************************************
 # Setting the needed variables
 # **********************************************************************************
-$parameters=get-content ./environment.env
+$parameters=get-content "./environment.env"
 $password=$parameters.Split(",")[0]
 $PE_IP=$parameters.Split(",")[1]
 
@@ -17,14 +17,14 @@ $Era_IP=$PE_IP.Substring(0,$PE_IP.Length-2)+"43"
 $GW=$PE_IP.Substring(0,$PE_IP.Length-2)+"1"
 
 # Use the right NFS Host using the 2nd Octet of the PE IP address
-switch ($PE_HOST.Split(".")[1]){
+switch ($PE_IP.Split(".")[1]){
     38 {$nfs_host="10.42.194.11"}
     42 {$nfs_host="10.42.194.11"}
     55 {$nfs_host="10.55.251.38"}
 }
 
 # Set the username and password header
-$Header_NTNX_Creds_NTNX_Creds=@{"Authorization" = "Basic "+[System.Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes("admin:"+$password));}
+$Header_NTNX_Creds=@{"Authorization" = "Basic "+[System.Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes("admin:"+$password));}
 
 # **********************************************************************************
 # ************************* Start of the script ************************************
@@ -34,8 +34,6 @@ $Header_NTNX_Creds_NTNX_Creds=@{"Authorization" = "Basic "+[System.Convert]::ToB
 echo "##################################################"
 echo "Let's get moving"
 echo "##################################################"
-
-cd /script
 
 # **********************************************************************************
 # PE Part of the script
@@ -223,13 +221,15 @@ echo $response
 connect-viserver $VCENTER -User administrator@vsphere.local -Password $password | Out-Null
 
 # Enable DRS on the vCenter
+echo "Enabling DRS on the vCenter environment"
 $cluster_name=(get-cluster| select $_.name).Name
-Set-Cluster -Cluster $cluster_name -DRSEnabled:$true | Out-Null
+Set-Cluster -Cluster $cluster_name -DRSEnabled:$true -Confirm:$false  | Out-Null
 
 # Create a new Portgroup called Secondary with the correct VLAN
+echo "Creating the Secondary network on the ESXi hosts"
 $vmhosts = Get-Cluster $cluster_name | Get-VMhost
 ForEach ($vmhost in $vmhosts){
-    Get-VirtualSwitch -VMhost $vmhost -Name $vSwitch | New-VirtualPortGroup -Name Secondary -VlanId (($PE_HOST.Split(".")[2] -as [int])*10+1) | Out-Null
+    Get-VirtualSwitch -VMhost $vmhost -Name "vSwitch0" | New-VirtualPortGroup -Name Secondary -VlanId (($PE_IP.Split(".")[2] -as [int])*10+1) | Out-Null
 }
 
 # Disconnect from the vCenter
@@ -237,20 +237,31 @@ disconnect-viserver * -confirm:$false
 
 # ************************** ESXi Host Level *****************************************
 # Create a temp NFS Datastore for the ISO image copying via one of the ESXi_Hosts
+echo "Preparing to upload needed Images..."
 $ESXi_Host=$vmhosts[0].name
-connect-viserver $ESXi_Host -User root -Password $password -Confirm:$false | Out-Null
-Get-VMHost $ESXi_Host | New-Datastore -Nfs -Name nfs_temp -Path /workshop_staging -NfsHost $nfs_host
+connect-viserver $ESXi_Host -User root -Password $password | Out-Null
+Get-VMHost $ESXi_Host | New-Datastore -Nfs -Name "nfs_temp" -Path /workshop_staging -NfsHost $nfs_host
 
 # Make two new Datastore objects
-$datastore1=Get-datastore -name "nfs01"
+echo "Waiting for the NFS_Temp Datastore to become ready for use"
+try {
+    $datastore1=Get-datastore -name "nfs_temp"
+}catch{
+    sleep 10
+    $datastore1=Get-datastore -name "nfs_temp"
+}
+
+
 $datastore2=Get-datastore -name "Images"
 New-PSDrive -Location $datastore1 -Name DS1 -PSProvider VimDatastore -Root "\" -Confirm:$false | Out-Null
 New-PSDrive -Location $datastore2 -Name DS2 -PSProvider VimDatastore -Root "\" -Confirm:$false | Out-Null
 
 # Copy the needed files to the Images Datastore
+echo "Copying the needed files"
 $files_arr=@('CentOS7.iso','Windows2016.iso','Nutanix-VirtIO-1.1.5.iso','Citrix_Virtual_Apps_and_Desktops_7_1912.iso',"AutoAD.vmdk")
 foreach ($file in $files_arr){
-    Copy-DatastoreItem -Item DS:\$file -Destination DS2:\ -Confirm:$false 
+    echo "Copying $file to the Images datastore"
+    Copy-DatastoreItem -Item DS1:\$file -Destination DS2:\ -Confirm:$false 
 }
 
 # Remove the two drives so the cleanup happens
@@ -262,9 +273,9 @@ Remove-Datastore -Datastore nfs_temp -VMHost $ESXi_Host -Confirm:$false | Out-Nu
 
 # Disconnect from the ESXi Host
 disconnect-viserver * -Confirm:$false | Out-Null
-
 # ********************* vCenter level ***********************************************
 # Connect to the vCenter of the environment
+echo "Connecting to the vCenter for next configuration steps"
 connect-viserver $VCENTER -User administrator@vsphere.local -Password $password | Out-Null
 
 # Need to create a Customisation Profile or we can not set Static IP
@@ -272,13 +283,17 @@ New-OSCustomizationSpec -OrgName "TE" -OSType Windows -Name PowerCliOnly  -Workg
 #Get-OSCustomizationNicMapping -OSCustomizationSpec PowerCliOnly | Set-OSCustomizationNicMapping -Position 1 -IpMode UseStaticIP -IpAddress $AutoAD -SubnetMask 255.255.255.128 -DefaultGateway $GW -Dns 8.8.8.8 -Confirm:$false
 
 # Deploy an AutoAD OVA and add the existing AutoAD.vdmk. DRS will take care of the rest.
-New-VM -VMHost $ESXi_Host -Name "AutoAD_Temp" -Datastore 'Images' -NumCPU 2 -CoresPerSocket 1 -MemoryGB 4 -SkipHardDisks -Confirm:$false
-New-HardDisk -DiskPath "[Images] AutoAD.vmdk" -VM "AutoAD"
+echo "Creating Temporary AutoAD VM with the earlier uploaded vmdk as its drive"
+New-VM -VMHost $ESXi_Host -Name "AutoAD_Temp" -NumCPU 2 -CoresPerSocket 1 -MemoryGB 4 -Confirm:$false
+Get-HardDisk -VM "AutoAD_Temp" | Remove- -confirm:$false
+New-HardDisk -DiskPath "[Images] AutoAD.vmdk" -VM "AutoAD_Temp"
 
 # Transform the VM into a template as we need to set static IP
+echo "Transforming the VM into a template"
 New-Template -Name "AutoAD-Templ" -VM "AutoAD_Temp"
 
 # Deploy the final AutoAD with Static IP
+echo "Deploying the Final AutoAD with a static IP"
 New-VM -VMHost $ESXi_Host -Name "AutoAD" -Datastore 'vmContainer1' -Template "AutoAD-Templ" -OSCustomizationSpec "PowerCliOnly" | Set-OSCustomizationNicMapping -Position 1 -IpMode UseStaticIP -IpAddress $AutoAD -SubnetMask 255.255.255.128 -DefaultGateway $GW -Dns 8.8.8.8 -Confirm:$false
 
 # Close the VMware connection
