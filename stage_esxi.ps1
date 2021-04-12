@@ -49,7 +49,7 @@ $APIParams = @{
 } 
 $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).value
 if ($response = "True"){
-    echo "Eula Excepted"
+    echo "Eula Accepted"
 }else{
     echo "Eula NOT accepted"
 }
@@ -221,9 +221,9 @@ echo $response
 connect-viserver $VCENTER -User administrator@vsphere.local -Password $password | Out-Null
 
 # Enable DRS on the vCenter
-echo "Enabling DRS on the vCenter environment"
+echo "Enabling DRS on the vCenter environment nd disabling Admission Control"
 $cluster_name=(get-cluster| select $_.name).Name
-Set-Cluster -Cluster $cluster_name -DRSEnabled:$true -Confirm:$false  | Out-Null
+Set-Cluster -Cluster $cluster_name -DRSEnabled:$true -HAAdmissionControlEnabled:$false -Confirm:$false | Out-Null
 
 # Create a new Portgroup called Secondary with the correct VLAN
 echo "Creating the Secondary network on the ESXi hosts"
@@ -231,59 +231,32 @@ $vmhosts = Get-Cluster $cluster_name | Get-VMhost
 ForEach ($vmhost in $vmhosts){
     Get-VirtualSwitch -VMhost $vmhost -Name "vSwitch0" | New-VirtualPortGroup -Name Secondary -VlanId (($PE_IP.Split(".")[2] -as [int])*10+1) | Out-Null
 }
-
-# Disconnect from the vCenter
-disconnect-viserver * -confirm:$false
-
-# ************************** ESXi Host Level *****************************************
-# Create a temp NFS Datastore for the ISO image copying via one of the ESXi_Hosts
-echo "Preparing to upload needed Images..."
-$ESXi_Host=$vmhosts[0].name
-connect-viserver $ESXi_Host -User root -Password $password | Out-Null
-Get-VMHost $ESXi_Host | New-Datastore -Nfs -Name "nfs_temp" -Path /workshop_staging -NfsHost $nfs_host
-
-# Make two new Datastore objects
-echo "Waiting for the NFS_Temp Datastore to become ready for use"
-try {
-    $datastore1=Get-datastore -name "nfs_temp"
-}catch{
-    sleep 10
-    $datastore1=Get-datastore -name "nfs_temp"
+echo "Uploading needed images"
+# Create a ContentLibray and copy the needed images to it
+New-ContentLibrary -Name "deploy" -Datastore "Images"
+$images=@('esxi_ovas/AutoAD_Sysprep.ova','esxi_ovas/ERA-Server-build-2.1.1.1.ova','Citrix_Virtual_Apps_and_Desktops_7_1912.iso','CentOS7.iso','Windows2016.iso')
+foreach($image in $images){
+    # Making sure we set the correct nameing for the ContentLibaray by removing the leading sublocation on the HTTP server
+    if ($image -Match "/"){
+        $image_name=$image.SubString(10)
+    }else{
+        $image_name=$image
+    }
+    # Remove the ova from the "templates" and the location where we got the Image from, but leave the isos alone
+    if ($image -Match ".ova"){
+        $image_short=$image.Substring(0,$image.Length-4)
+        $image_short=$image_short.SubString(10)
+    }else{
+        $image_short=$image
+    }
+    get-ContentLibrary -Name 'deploy' -Local |New-ContentLibraryItem -name $image_short -FileName $image_name -Uri "http://$nfs_host/workshop_staging/$image"
+    echo "Uploaded $image as $image_short in the deploy ContentLibrary"
 }
 
-
-$datastore2=Get-datastore -name "Images"
-New-PSDrive -Location $datastore1 -Name DS1 -PSProvider VimDatastore -Root "\" -Confirm:$false | Out-Null
-New-PSDrive -Location $datastore2 -Name DS2 -PSProvider VimDatastore -Root "\" -Confirm:$false | Out-Null
-
-# Copy the needed files to the Images Datastore
-echo "Copying the needed files"
-$files_arr=@('CentOS7.iso','Windows2016.iso','Nutanix-VirtIO-1.1.5.iso','Citrix_Virtual_Apps_and_Desktops_7_1912.iso',"AutoAD.vmdk")
-foreach ($file in $files_arr){
-    echo "Copying $file to the Images datastore"
-    Copy-DatastoreItem -Item DS1:\$file -Destination DS2:\ -Confirm:$false 
-}
-
-# Remove the two drives so the cleanup happens
-Remove-PSDrive -Name DS1
-Remove-PSDrive -Name DS2
-
-# Remove the temp mounted Datastore
-Remove-Datastore -Datastore nfs_temp -VMHost $ESXi_Host -Confirm:$false | Out-Null
-
-# Disconnect from the ESXi Host
-disconnect-viserver * -Confirm:$false | Out-Null
-# ********************* vCenter level ***********************************************
-# Connect to the vCenter of the environment
-echo "Connecting to the vCenter for next configuration steps"
-connect-viserver $VCENTER -User administrator@vsphere.local -Password $password | Out-Null
-
-# Deploy an AutoAD OVA and add the existing AutoAD.vdmk. DRS will take care of the rest.
+# Deploy an AutoAD OVA. DRS will take care of the rest.
+$ESXi_Host=$vmhosts[0]
 echo "Creating AutoAD VM via a Content Library in the Image Datastore"
-New-ContentLibrary -Name deploy -Datastore "Images"
-$localContentLibrary=get-ContentLibrary -Name 'deploy' -Local
-New-ContentLibraryItem -ContentLibrary $localContentLibrary -name 'AutoAD' -FileName 'AutoAD-Sysprep.ova' -Uri 'http://10.42.194.11/workshop_staging/esxi_ovas/AutoAD_Sysprep.ova'
-Get-ContentLibraryitem -name 'AutoAD' | new-vm -Name AutoAD -vmhost $ESXi_Host | Out-Null
+Get-ContentLibraryitem -name 'AutoAD_Sysprep' | new-vm -Name AutoAD -vmhost $ESXi_Host | Out-Null
 # Set the network to VM-Network before starting the VM
 get-vm 'AutoAD' | Get-NetworkAdapter | Set-NetworkAdapter -NetworkName 'VM Network' -Confirm:$false | Out-Null
 
@@ -292,9 +265,10 @@ Start-VM -VM 'AutoAD' | Out-Null
 
 echo "Waiting till AutoAD is ready.."
 $counter=1
+$url="http://"+$AutoAD+":8000"
 while ($true){
     try{
-        $response=invoke-Webrequest -Uri http://$AutoAD:8000 -TimeOut 15
+        $response=invoke-Webrequest -Uri $url -TimeOut 15
         Break
     }catch{
         echo "AutoAD still not ready. Sleeping 60 seconds before retrying...($counter/20)"
