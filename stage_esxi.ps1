@@ -279,13 +279,33 @@ echo "Connecting to the vCenter for next configuration steps"
 connect-viserver $VCENTER -User administrator@vsphere.local -Password $password | Out-Null
 
 # Deploy an AutoAD OVA and add the existing AutoAD.vdmk. DRS will take care of the rest.
-echo "Creating AutoAD VM with the earlier uploaded vmdk as its drive"
-New-VM -VMHost $ESXi_Host -Name "AutoAD_Temp" -NumCPU 2 -CoresPerSocket 1 -MemoryGB 4 -Confirm:$false
-Get-HardDisk -VM "AutoAD_Temp" | Remove- -confirm:$false
-New-HardDisk -DiskPath "[Images] AutoAD.vmdk" -VM "AutoAD_Temp"
-New-VM -Name AutoAD -VM AutoAD_temp -NetworkName 'VM Network'
+echo "Creating AutoAD VM via a Content Library in the Image Datastore"
+New-ContentLibrary -Name deploy -Datastore "Images"
+$localContentLibrary=get-ContentLibrary -Name 'deploy' -Local
+New-ContentLibraryItem -ContentLibrary $localContentLibrary -name 'AutoAD' -FileName 'AutoAD-Sysprep.ova' -Uri 'http://10.42.194.11/workshop_staging/esxi_ovas/AutoAD_Sysprep.ova'
+Get-ContentLibraryitem -name 'AutoAD' | new-vm -Name AutoAD -vmhost $ESXi_Host | Out-Null
+# Set the network to VM-Network before starting the VM
+get-vm 'AutoAD' | Get-NetworkAdapter | Set-NetworkAdapter -NetworkName 'VM Network' -Confirm:$false | Out-Null
 
+echo "AutoAD VM has been created. Starting..."
+Start-VM -VM 'AutoAD' | Out-Null
 
+echo "Waiting till AutoAD is ready.."
+$counter=1
+while ($true){
+    try{
+        $response=invoke-Webrequest -Uri http://$AutoAD:8000 -TimeOut 15
+        Break
+    }catch{
+        echo "AutoAD still not ready. Sleeping 60 seconds before retrying...($counter/20)"
+        sleep 60
+        if ($counter -eq 20){
+            echo "We waited for 20 minutes and the AutoAD didn't got ready in time..."
+            exit 1
+        }
+        $counter++
+    }
+}
 # Close the VMware connection
 disconnect-viserver * -Confirm:$false
 
