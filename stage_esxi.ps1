@@ -211,6 +211,8 @@ $APIParams = @{
 $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
 echo $response
 
+echo "--------------------------------------"
+echo "Concentrating on VMware environment.."
 
 # **********************************************************************************
 # Start the VMware environment manipulations
@@ -256,7 +258,7 @@ foreach($image in $images){
 # Deploy an AutoAD OVA. DRS will take care of the rest.
 $ESXi_Host=$vmhosts[0]
 echo "Creating AutoAD VM via a Content Library in the Image Datastore"
-Get-ContentLibraryitem -name 'AutoAD_Sysprep' | new-vm -Name AutoAD -vmhost $ESXi_Host | Out-Null
+Get-ContentLibraryitem -name 'AutoAD_Sysprep' | new-vm -Name AutoAD -vmhost $ESXi_Host -Datastore "vmContainer1" | Out-Null
 # Set the network to VM-Network before starting the VM
 get-vm 'AutoAD' | Get-NetworkAdapter | Set-NetworkAdapter -NetworkName 'VM Network' -Confirm:$false | Out-Null
 
@@ -280,19 +282,97 @@ while ($true){
         $counter++
     }
 }
+echo "AutoAD is ready for being used. Progressing..."
+
 # Close the VMware connection
 disconnect-viserver * -Confirm:$false
 
 # ********************* PE level ***********************************************
-# Confiure PE to use AutoAD for authentication
+# Confiure PE to use AutoAD for authentication and DNS server
+echo "--------------------------------------"
+echo "Switching to Nutanix environment"
+$directory_url="ldap://"+$AutoAD+":389"
+$error=45
+  
+echo "--------------------------------------"
+echo "Adding "+$AutoAD+" as the Directory Server"
+
+$Payload=@"
+{
+"connection_type": "LDAP",
+"directory_type": "ACTIVE_DIRECTORY",
+"directory_url": $directory_url,
+"domain": "ntnxlab.local",
+"group_search_type": "RECURSIVE",
+"name": "ntnxlab.local",
+"service_account_password": "administrator",
+"service_account_username": "nutanix/4u"
+}
+"@
+
+$APIParams = @{
+    method="POST"
+    Uri="https://"+$PE_IP+":9440/api/nutanix/v2.0/authconfig/directories/"
+    ContentType="application/json"
+    Body=$Payload
+    Header = $Header_NTNX_Creds
+  }
+  $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+  if ($response = "True"){
+      echo "Authorization to use NTNXLab.local has been created"
+  }else{
+      echo "Authorization to use NTNXLab.local has NOT been created"
+  }
+
+echo "--------------------------------------"
+echo "Adding SSP Admins AD Group to Cluster Admin Role"
+
+$Payload=@"
+{
+    "directoryName": "ntnxlab.local",
+    "role": "ROLE_CLUSTER_ADMIN",
+    "entityType": "GROUP",
+    "entityValues":[
+        "SSP Admins"
+    ]
+}
+"@
+
+$APIParams = @{
+    method="POST"
+    Uri="https://"+$PE_IP+":9440/PrismGateway/services/rest/v1/authconfig/directories/ntnxlab.local/role_mappings?&entityType=GROUP&role=ROLE_CLUSTER_ADMIN"
+    ContentType="application/json"
+    Body=$Payload
+    Header = $Header_NTNX_Creds
+  }
+  $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+  if ($response = "True"){
+      echo "Authorization to use NTNXLab.local has been created"
+  }else{
+      echo "Authorization to use NTNXLab.local has NOT been created"
+  }
 
 
+echo "Role Added"
+echo "--------------------------------------"
+echo "Add AutoAD to the DNS server confguration"
 
-
+$APIParams = @{
+    method="GET"
+    Uri="https://"+$PE_IP+":9440/PrismGateway/services/rest/v2.0/cluster/name_servers"
+    ContentType="application/json"
+    Body=$Payload
+    Header = $Header_NTNX_Creds
+  }
+  $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+  echo $response
 
 # **********************************************************************************
 # Deploy Prism Central
 # **********************************************************************************
+echo "Deploying the Prism Central to the environment"
+echo "--------------------------------------"
+
 
 
 # **********************************************************************************
@@ -334,5 +414,3 @@ disconnect-viserver * -Confirm:$false
 # **********************************************************************************
 # Deploy blueperint where we set the DHCP server
 # **********************************************************************************
-
-
