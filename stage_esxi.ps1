@@ -34,7 +34,7 @@ $Header_NTNX_Creds=@{"Authorization" = "Basic "+[System.Convert]::ToBase64String
 echo "##################################################"
 echo "Let's get moving"
 echo "##################################################"
-<#
+
 # **********************************************************************************
 # PE Part of the script
 # **********************************************************************************
@@ -409,7 +409,7 @@ $APIParams = @{
     Header = $Header_NTNX_Creds
   }
   $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
-#>
+
 
 
 # **********************************************************************************
@@ -494,6 +494,7 @@ echo "Deployment of PC has started. Now need to wait till it is up and running"
 echo "Waiting till PC is ready.. (could take up to 30+ minutes)"
 $counter=1
 $url="https://"+$PC_IP+":9440"
+# Need temporary default credentials
 $username = "admin"
 $password_default = "Nutanix/4u" | ConvertTo-SecureString -asPlainText -Force
 $cred = New-Object System.Management.Automation.PSCredential($username,$password_default)
@@ -545,9 +546,9 @@ $APIParams = @{
     Uri="https://"+$PC_IP+":9440/PrismGateway/services/rest/v1/utils/change_default_system_password"
     ContentType="application/json"
     Body=$Payload
-    Header = $Header_NTNX_Creds
 }
-$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+# Need to use the Default creds to get in and set the password, only once
+$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck -Credential $cred)
 if ($response = "True"){
     echo "PC Password has been changed to the same as PE"
 }else{
