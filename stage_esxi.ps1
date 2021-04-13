@@ -25,6 +25,7 @@ switch ($PE_IP.Split(".")[1]){
 
 # Set the username and password header
 $Header_NTNX_Creds=@{"Authorization" = "Basic "+[System.Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes("admin:"+$password));}
+$Header_NTNX_PC_temp_creds=@{"Authorization" = "Basic "+[System.Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes("admin:Nutanix/4u"));}
 
 # **********************************************************************************
 # ************************* Start of the script ************************************
@@ -34,7 +35,7 @@ $Header_NTNX_Creds=@{"Authorization" = "Basic "+[System.Convert]::ToBase64String
 echo "##################################################"
 echo "Let's get moving"
 echo "##################################################"
-
+<#
 # **********************************************************************************
 # PE Part of the script
 # **********************************************************************************
@@ -237,7 +238,7 @@ ForEach ($vmhost in $vmhosts){
 echo "Uploading needed images"
 # Create a ContentLibray and copy the needed images to it
 New-ContentLibrary -Name "deploy" -Datastore "Images"
-$images=@('esxi_ovas/AutoAD_Sysprep.ova','esxi_ovas/ERA-Server-build-2.1.1.1.ova','Citrix_Virtual_Apps_and_Desktops_7_1912.iso','CentOS7.iso','Windows2016.iso')
+$images=@('esxi_ovas/AutoAD_Sysprep.ova','esxi_ovas/WinTools-AHV.ova','esxi_ovas/CentOS.ova','CentOS7.iso','Windows2016.iso')
 foreach($image in $images){
     # Making sure we set the correct nameing for the ContentLibaray by removing the leading sublocation on the HTTP server
     if ($image -Match "/"){
@@ -537,6 +538,9 @@ while ($response.clusterDetails.ipAddresses -eq $null){
 }
 echo "PE has been registered to PC. Progressing..."
 echo "--------------------------------------"
+
+#>
+
 # **********************************************************************************
 # Set Prism Central password to the same as PE
 # **********************************************************************************
@@ -546,6 +550,7 @@ $APIParams = @{
     Uri="https://"+$PC_IP+":9440/PrismGateway/services/rest/v1/utils/change_default_system_password"
     ContentType="application/json"
     Body=$Payload
+    Header = $Header_NTNX_PC_temp_creds
 }
 # Need to use the Default creds to get in and set the password, only once
 $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck -Credential $cred)
@@ -609,7 +614,6 @@ echo "--------------------------------------"
 # **********************************************************************************
 # Run LCM
 # **********************************************************************************
-
 
 
 # **********************************************************************************
