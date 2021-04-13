@@ -34,7 +34,7 @@ $Header_NTNX_Creds=@{"Authorization" = "Basic "+[System.Convert]::ToBase64String
 echo "##################################################"
 echo "Let's get moving"
 echo "##################################################"
-
+<#
 # **********************************************************************************
 # PE Part of the script
 # **********************************************************************************
@@ -230,6 +230,7 @@ Set-Cluster -Cluster $cluster_name -DRSEnabled:$true -HAAdmissionControlEnabled:
 # Create a new Portgroup called Secondary with the correct VLAN
 echo "Creating the Secondary network on the ESXi hosts"
 $vmhosts = Get-Cluster $cluster_name | Get-VMhost
+
 ForEach ($vmhost in $vmhosts){
     Get-VirtualSwitch -VMhost $vmhost -Name "vSwitch0" | New-VirtualPortGroup -Name Secondary -VlanId (($PE_IP.Split(".")[2] -as [int])*10+1) | Out-Null
 }
@@ -289,24 +290,25 @@ disconnect-viserver * -Confirm:$false
 
 # ********************* PE level ***********************************************
 # Confiure PE to use AutoAD for authentication and DNS server
+
 echo "--------------------------------------"
 echo "Switching to Nutanix environment"
 $directory_url="ldap://"+$AutoAD+":389"
 $error=45
   
 echo "--------------------------------------"
-echo "Adding "+$AutoAD+" as the Directory Server"
+echo "Adding $AutoAD as the Directory Server"
 
 $Payload=@"
 {
 "connection_type": "LDAP",
 "directory_type": "ACTIVE_DIRECTORY",
-"directory_url": $directory_url,
+"directory_url": "$directory_url",
 "domain": "ntnxlab.local",
 "group_search_type": "RECURSIVE",
-"name": "ntnxlab.local",
-"service_account_password": "administrator",
-"service_account_username": "nutanix/4u"
+"name": "NTNXLAB",
+"service_account_username": "administrator@ntnxlab.local",
+"service_account_password": "nutanix/4u"
 }
 "@
 
@@ -324,12 +326,54 @@ $APIParams = @{
       echo "Authorization to use NTNXLab.local has NOT been created"
   }
 
+# Removing the DNS servers from the PE and add Just the AutoAD as its DNS server
+echo "Updating DNS Servers"
+echo "--------------------------------------"
+
+# Fill the array with the DNS servers that are there
+$APIParams = @{
+    method="GET"
+    Uri="https://"+$PE_IP+":9440/PrismGateway/services/rest/v2.0/cluster/name_servers"
+    ContentType="application/json"
+    Body=$Payload
+    Header = $Header_NTNX_Creds
+}
+$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+$servers=$response
+
+# Delete the DNS servers so we can add just one
+foreach($server in $servers){
+    $Payload='[{"ipv4":"'+$server+'"}]'
+    echo $Payload
+    $APIParams = @{
+        method="POST"
+        Uri="https://"+$PE_IP+":9440/PrismGateway/services/rest/v1/cluster/name_servers/remove_list"
+        ContentType="application/json"
+        Body=$Payload
+        Header = $Header_NTNX_Creds
+    }
+    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+}
+
+# Get the AutoAD as correct DNS is
+$Payload='{"value":"'+$AutoAD+'"}'
+echo $Payload
+$APIParams = @{
+    method="POST"
+    Uri="https://"+$PE_IP+":9440/PrismGateway/services/rest/v1/cluster/name_servers"
+    ContentType="application/json"
+    Body=$Payload
+    Header = $Header_NTNX_Creds
+}
+$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+
+echo "DNS Servers Updated"
 echo "--------------------------------------"
 echo "Adding SSP Admins AD Group to Cluster Admin Role"
 
 $Payload=@"
 {
-    "directoryName": "ntnxlab.local",
+    "directoryName": "NTNXLAB",
     "role": "ROLE_CLUSTER_ADMIN",
     "entityType": "GROUP",
     "entityValues":[
@@ -340,7 +384,7 @@ $Payload=@"
 
 $APIParams = @{
     method="POST"
-    Uri="https://"+$PE_IP+":9440/PrismGateway/services/rest/v1/authconfig/directories/ntnxlab.local/role_mappings?&entityType=GROUP&role=ROLE_CLUSTER_ADMIN"
+    Uri="https://"+$PE_IP+":9440/PrismGateway/services/rest/v1/authconfig/directories/NTNXLAB/role_mappings?&entityType=GROUP&role=ROLE_CLUSTER_ADMIN"
     ContentType="application/json"
     Body=$Payload
     Header = $Header_NTNX_Creds
@@ -365,7 +409,8 @@ $APIParams = @{
     Header = $Header_NTNX_Creds
   }
   $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
-  echo $response
+#>
+
 
 # **********************************************************************************
 # Deploy Prism Central
@@ -373,23 +418,178 @@ $APIParams = @{
 echo "Deploying the Prism Central to the environment"
 echo "--------------------------------------"
 
+# Get the Storage UUID as we need it before we can deploy PC
+$APIParams = @{
+    method="GET"
+    Uri="https://"+$PE_IP+":9440/PrismGateway/services/rest/v2.0/storage_containers"
+    ContentType="application/json"
+    Header = $Header_NTNX_Creds
+} 
+$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).entities | where-object {$_.name -match "vmContainer1"}
+$cntr_uuid=$response.storage_container_uuid
 
 
+# Get the Network UUID as we need it before we can deploy PC
+$APIParams = @{
+  method="GET"
+  Uri="https://"+$PE_IP+":9440/PrismGateway/services/rest/v2.0/networks"
+  ContentType="application/json"
+  Body=$Payload
+  Header = $Header_NTNX_Creds
+}
+$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).entities | where-object {$_.name -match "VM Network"}
+$network_uuid=$response.uuid
+
+
+$Payload=@"
+{
+    "resources":{
+        "version":"pc.2021.1.0.1",
+        "should_auto_register":true,
+        "pc_vm_list":[
+            {
+                "vm_name":"pc-2021.1",
+                "container_uuid":"$cntr_uuid",
+                "num_sockets":6,
+                "data_disk_size_bytes":536870912000,
+                "memory_size_bytes":27917287424,
+                "dns_server_ip_list":[
+                    "$AutoAD"
+                ],
+                "nic_list":[
+                    {
+                        "ip_list":[
+                            "$PC_IP"
+                        ],
+                        "network_configuration":{
+                            "network_uuid":"$network_uuid",
+                            "subnet_mask":"255.255.255.128",
+                            "default_gateway":"$GW"
+                        }
+                    }
+                ]
+            }
+        ]
+    }
+}
+"@
+
+$APIParams = @{
+  method="POST"
+  Uri="https://"+$PE_IP+":9440/api/nutanix/v3/prism_central"
+  ContentType="application/json"
+  Body=$Payload
+  Header = $Header_NTNX_Creds
+}
+try{
+    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+}catch{
+    echo "The PC download and deployment could not be executed. Exiting the script."
+    echo "Received error was: $_.Exception.Message"
+    exit 1
+}
+
+
+echo "Deployment of PC has started. Now need to wait till it is up and running"
+echo "Waiting till PC is ready.. (could take up to 30+ minutes)"
+$counter=1
+$url="https://"+$PC_IP+":9440"
+$username = "admin"
+$password_default = "Nutanix/4u" | ConvertTo-SecureString -asPlainText -Force
+$cred = New-Object System.Management.Automation.PSCredential($username,$password_default)
+while ($true){
+    try{
+        $response=invoke-Webrequest -Uri $url -TimeOut 15 -SkipCertificateCheck -Credential $cred
+        Break
+    }catch{
+        echo "PC still not ready. Sleeping 60 seconds before retrying...($counter/45)"
+        sleep 60
+        if ($counter -eq 45){
+            echo "We waited for 45 minutes and the AutoAD didn't got ready in time..."
+            exit 1
+        }
+        $counter++
+    }
+}
+echo "PC is ready for being used. Progressing..."
+
+# Check if registration was successfull of PE to PC
+echo "Checking if PE has been registred to PC"
+$APIParams = @{
+  method="GET"
+  Uri="https://"+$PE_IP+":9440/PrismGateway/services/rest/v1/multicluster/cluster_external_state"
+  ContentType="application/json"
+  Body=$Payload
+  Header = $Header_NTNX_Creds
+}
+$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+$count=1
+while ($response.clusterDetails.ipAddresses -eq $null){
+    echo "PE is not yet registered to PC. Waiting a bit more.."
+    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+    sleep 60
+    if ($count -gt 10){
+        echo "Waited for 10 minutes. Giving up. Exiting the script."
+        exit 3
+    }
+    $count++
+}
+echo "PE has been registered to PC. Progressing..."
+echo "--------------------------------------"
 # **********************************************************************************
-# Reset Prism Central password to the same as PE
+# Set Prism Central password to the same as PE
 # **********************************************************************************
-
+$Payload='{"oldPassword":"Nutanix/4u","newPassword":"'+$password+'"}'
+$APIParams = @{
+    method="POST"
+    Uri="https://"+$PC_IP+":9440/PrismGateway/services/rest/v1/utils/change_default_system_password"
+    ContentType="application/json"
+    Body=$Payload
+    Header = $Header_NTNX_Creds
+}
+$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+if ($response = "True"){
+    echo "PC Password has been changed to the same as PE"
+}else{
+    echo "PC Password has NOT been changed to the same as PE. Exiting script."
+    exit 2
+}
 
 # **********************************************************************************
 # Accept the PC Eula
 # **********************************************************************************
+$APIParams = @{
+    method="POST"
+    Body='{"username":"NTNX","companyName":"NTNX","jobTitle":"NTNX"}'
+    Uri="https://"+$PC_IP+":9440/PrismGateway/services/rest/v1/eulas/accept"
+    ContentType="application/json"
+    Header = $Header_NTNX_Creds
+} 
+$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).value
+if ($response = "True"){
+    echo "Eula Accepted"
+}else{
+    echo "Eula NOT accepted"
+}
 
 
 # **********************************************************************************
 # Disable PC pulse
 # **********************************************************************************
-
-
+$APIParams = @{
+    method="PUT"
+    Body='{"enable":"false","enableDefaultNutanixEmail":"false","isPulsePromptNeeded":"false"}'
+    Uri="https://"+$PC_IP+":9440/PrismGateway/services/rest/v1/pulse"
+    ContentType="application/json"
+    Header = $Header_NTNX_Creds
+} 
+$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).value
+if ($response = "True"){
+    echo "Pulse Disabled"
+}else{
+    echo "Pulse NOT disabled"
+}
+echo "--------------------------------------"
 # **********************************************************************************
 # Enable Calm
 # **********************************************************************************
