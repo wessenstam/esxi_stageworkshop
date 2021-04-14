@@ -18,9 +18,18 @@ $GW=$PE_IP.Substring(0,$PE_IP.Length-2)+"1"
 
 # Use the right NFS Host using the 2nd Octet of the PE IP address
 switch ($PE_IP.Split(".")[1]){
-    38 {$nfs_host="10.42.194.11"}
-    42 {$nfs_host="10.42.194.11"}
-    55 {$nfs_host="10.55.251.38"}
+    38 {
+        $nfs_host="10.42.194.11"
+        $vlan=(($PE_IP.Split(".")[2] -as [int])*10+3)
+    }
+    42 {
+        $nfs_host="10.42.194.11"
+        $vlan=(($PE_IP.Split(".")[2] -as [int])*10+1)
+    }
+    55 {
+        $nfs_host="10.55.251.38"
+        $vlan=(($PE_IP.Split(".")[2] -as [int])*10+1)
+    }
 }
 
 # Set the username and password header
@@ -257,7 +266,7 @@ echo "Creating the Secondary network on the ESXi hosts"
 $vmhosts = Get-Cluster $cluster_name | Get-VMhost
 
 ForEach ($vmhost in $vmhosts){
-    Get-VirtualSwitch -VMhost $vmhost -Name "vSwitch0" | New-VirtualPortGroup -Name Secondary -VlanId (($PE_IP.Split(".")[2] -as [int])*10+1) | Out-Null
+    Get-VirtualSwitch -VMhost $vmhost -Name "vSwitch0" | New-VirtualPortGroup -Name Secondary -VlanId $vlan | Out-Null
 }
 
 echo "--------------------------------------"
