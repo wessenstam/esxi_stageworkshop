@@ -32,6 +32,7 @@ $Header_NTNX_PC_temp_creds=@{"Authorization" = "Basic "+[System.Convert]::ToBase
 # **********************************************************************************
 
 # Get something on the screen...
+
 echo "##################################################"
 echo "Let's get moving"
 echo "##################################################"
@@ -41,6 +42,7 @@ echo "##################################################"
 # **********************************************************************************
 
 # Accept the EULA
+
 $APIParams = @{
     method="POST"
     Body='{"username":"NTNX","companyName":"NTNX","jobTitle":"NTNX"}'
@@ -55,7 +57,10 @@ if ($response = "True"){
     echo "Eula NOT accepted"
 }
 
+echo "--------------------------------------"
+
 # Disable Pulse
+
 $APIParams = @{
     method="PUT"
     Body='{"enable":"false","enableDefaultNutanixEmail":"false","isPulsePromptNeeded":"false"}'
@@ -70,8 +75,12 @@ if ($response = "True"){
     echo "Pulse NOT disabled"
 }
 
+echo "--------------------------------------"
+
 # Change the name of the Storage Pool to SP1
+
 # First get the Disk IDs
+
 $APIParams = @{
     method="GET"
     Uri="https://"+$PE_IP+":9440/PrismGateway/services/rest/v1/storage_pools?sortOrder=storage_pool_name"
@@ -83,6 +92,7 @@ $disks=($response | ConvertFrom-JSON).entities.disks | ConvertTo-JSON
 $sp_id=($response | ConvertFrom-JSON).entities.id | ConvertTo-JSON
 
 # Change the name of the Storage Pool
+
 $Body=@"
 {
     "id":$sp_id,
@@ -105,8 +115,12 @@ if ($response="True"){
     echo "Storage Pool has not been renamed"
 }
 
+echo "--------------------------------------"
+
 # Change the name of the defaulxxxx storage container to Default
+
 # Get the ID and UUID of the default container first
+
 $APIParams = @{
     method="GET"
     Uri="https://"+$PE_IP+":9440/PrismGateway/services/rest/v2.0/storage_containers"
@@ -143,8 +157,10 @@ if ($response = "True"){
     echo "Default Storage Container has NOT been updated"
 }
 
+echo "--------------------------------------"
 
 # Create the Images datastore
+
 $Payload=@"
 {
     "name": "Images",
@@ -180,9 +196,12 @@ if ($response = "True"){
     echo "Images Storage Container has NOT been created"
 }
 
+echo "--------------------------------------"
 
 # Mount the Images container to all ESXi hosts
+
 # Get the ESXi Hosts UUIDS
+
 $APIParams = @{
     method="GET"
     Uri="https://"+$PE_IP+":9440/PrismGateway/services/rest/v2.0/hosts/"
@@ -193,6 +212,7 @@ $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).entities.service_
 $host_ids=$response | ConvertTO-JSON
 
 # Mount to all ESXi Hosts
+
 $Payload=@"
 {
     "containerName":"Images",
@@ -219,25 +239,33 @@ echo "Concentrating on VMware environment.."
 # Start the VMware environment manipulations
 # **********************************************************************************
 
-# For this to work we need to connect from vCenter to ESXi and back
-# ********************* vCenter level ***********************************************
 # Connect to the vCenter of the environment
+
 connect-viserver $VCENTER -User administrator@vsphere.local -Password $password | Out-Null
 
 # Enable DRS on the vCenter
+
 echo "Enabling DRS on the vCenter environment and disabling Admission Control"
 $cluster_name=(get-cluster| select $_.name).Name
 Set-Cluster -Cluster $cluster_name -DRSEnabled:$true -HAAdmissionControlEnabled:$false -Confirm:$false | Out-Null
 
+echo "--------------------------------------"
+
 # Create a new Portgroup called Secondary with the correct VLAN
+
 echo "Creating the Secondary network on the ESXi hosts"
 $vmhosts = Get-Cluster $cluster_name | Get-VMhost
 
 ForEach ($vmhost in $vmhosts){
     Get-VirtualSwitch -VMhost $vmhost -Name "vSwitch0" | New-VirtualPortGroup -Name Secondary -VlanId (($PE_IP.Split(".")[2] -as [int])*10+1) | Out-Null
 }
+
+echo "--------------------------------------"
+
 echo "Uploading needed images"
+
 # Create a ContentLibray and copy the needed images to it
+
 New-ContentLibrary -Name "deploy" -Datastore "Images"
 $images=@('esxi_ovas/AutoAD_Sysprep.ova','esxi_ovas/WinTools-AHV.ova','esxi_ovas/CentOS.ova','CentOS7.iso','Windows2016.iso')
 foreach($image in $images){
@@ -258,12 +286,19 @@ foreach($image in $images){
     echo "Uploaded $image as $image_short in the deploy ContentLibrary"
 }
 
+echo "--------------------------------------"
+
 # Deploy an AutoAD OVA. DRS will take care of the rest.
+
 $ESXi_Host=$vmhosts[0]
 echo "Creating AutoAD VM via a Content Library in the Image Datastore"
 Get-ContentLibraryitem -name 'AutoAD_Sysprep' | new-vm -Name AutoAD -vmhost $ESXi_Host -Datastore "vmContainer1" | Out-Null
+
 # Set the network to VM-Network before starting the VM
+
 get-vm 'AutoAD' | Get-NetworkAdapter | Set-NetworkAdapter -NetworkName 'VM Network' -Confirm:$false | Out-Null
+
+echo "--------------------------------------"
 
 echo "AutoAD VM has been created. Starting..."
 Start-VM -VM 'AutoAD' | Out-Null
@@ -287,17 +322,17 @@ while ($true){
 }
 echo "AutoAD is ready for being used. Progressing..."
 echo "--------------------------------------"
-# Close the VMware connection
-disconnect-viserver * -Confirm:$false
 
+# Close the VMware connection
+
+disconnect-viserver * -Confirm:$false
 
 # **********************************************************************************
 # Start the PE environment manipulations
 # **********************************************************************************
 
-# ******************************************************************************
+
 # Confiure PE to use AutoAD for authentication and DNS server
-# ******************************************************************************
 
 $directory_url="ldap://"+$AutoAD+":389"
   
@@ -330,10 +365,14 @@ $APIParams = @{
       echo "Authorization to use NTNXLab.local has NOT been created"
   }
 
+echo "--------------------------------------"
+
 # Removing the DNS servers from the PE and add Just the AutoAD as its DNS server
+
 echo "Updating DNS Servers"
 
 # Fill the array with the DNS servers that are there
+
 $APIParams = @{
     method="GET"
     Uri="https://"+$PE_IP+":9440/PrismGateway/services/rest/v2.0/cluster/name_servers"
@@ -345,6 +384,7 @@ $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
 $servers=$response
 
 # Delete the DNS servers so we can add just one
+
 foreach($server in $servers){
     $Payload='[{"ipv4":"'+$server+'"}]'
     echo $Payload
@@ -358,7 +398,8 @@ foreach($server in $servers){
     $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
 }
 
-# Get the AutoAD as correct DNS is
+# Get the AutoAD as correct DNS in
+
 $Payload='{"value":"'+$AutoAD+'"}'
 echo $Payload
 $APIParams = @{
@@ -371,6 +412,8 @@ $APIParams = @{
 $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
 
 echo "DNS Servers Updated"
+
+cho "--------------------------------------"
 
 echo "Adding SSP Admins AD Group to Cluster Admin Role"
 
@@ -394,13 +437,11 @@ $APIParams = @{
   }
   $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
   if ($response = "True"){
-      echo "Authorization to use NTNXLab.local has been created"
+      echo "SSP Admins have been added as the Cluster Admin Role"
   }else{
-      echo "Authorization to use NTNXLab.local has NOT been created"
+      echo "SSP Admins have not been added as the CLuster Admin Role"
   }
 
-
-echo "Role Added"
 echo "--------------------------------------"
 
 
@@ -409,6 +450,7 @@ echo "--------------------------------------"
 echo "Deploying the Prism Central to the environment"
 
 # Get the Storage UUID as we need it before we can deploy PC
+
 $APIParams = @{
     method="GET"
     Uri="https://"+$PE_IP+":9440/PrismGateway/services/rest/v2.0/storage_containers"
@@ -420,6 +462,7 @@ $cntr_uuid=$response.storage_container_uuid
 
 
 # Get the Network UUID as we need it before we can deploy PC
+
 $APIParams = @{
   method="GET"
   Uri="https://"+$PE_IP+":9440/PrismGateway/services/rest/v2.0/networks"
@@ -484,7 +527,9 @@ echo "Deployment of PC has started. Now need to wait till it is up and running"
 echo "Waiting till PC is ready.. (could take up to 30+ minutes)"
 $counter=1
 $url="https://"+$PC_IP+":9440"
+
 # Need temporary default credentials
+
 $username = "admin"
 $password_default = "Nutanix/4u" | ConvertTo-SecureString -asPlainText -Force
 $cred = New-Object System.Management.Automation.PSCredential($username,$password_default)
@@ -503,8 +548,10 @@ while ($true){
     }
 }
 echo "PC is ready for being used. Progressing..."
+echo "--------------------------------------"
 
 # Check if registration was successfull of PE to PC
+
 echo "Checking if PE has been registred to PC"
 $APIParams = @{
   method="GET"
@@ -532,9 +579,9 @@ echo "--------------------------------------"
 # Start the PC environment manipulations
 # **********************************************************************************
 
-# **********************************************************************************
+
 # Set Prism Central password to the same as PE
-# **********************************************************************************
+
 $Payload='{"oldPassword":"Nutanix/4u","newPassword":"'+$password+'"}'
 $APIParams = @{
     method="POST"
@@ -543,7 +590,9 @@ $APIParams = @{
     Body=$Payload
     Header = $Header_NTNX_PC_temp_creds
 }
+
 # Need to use the Default creds to get in and set the password, only once
+
 $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck -Credential $cred)
 if ($response = "True"){
     echo "PC Password has been changed to the same as PE"
@@ -552,9 +601,11 @@ if ($response = "True"){
     exit 2
 }
 
-# **********************************************************************************
+echo "--------------------------------------"
+
+
 # Accept the PC Eula
-# **********************************************************************************
+
 $APIParams = @{
     method="POST"
     Body='{"username":"NTNX","companyName":"NTNX","jobTitle":"NTNX"}'
@@ -569,9 +620,11 @@ if ($response = "True"){
     echo "Eula NOT accepted"
 }
 
-# **********************************************************************************
+echo "--------------------------------------"
+
+
 # Disable PC pulse
-# **********************************************************************************
+
 $APIParams = @{
     method="PUT"
     Body='{"enable":"false","enableDefaultNutanixEmail":"false","isPulsePromptNeeded":"false"}'
@@ -585,6 +638,76 @@ if ($response = "True"){
 }else{
     echo "Pulse NOT disabled"
 }
+
+echo "--------------------------------------"
+
+# Add the AutoAD as the Directory server
+
+$directory_url="ldap://"+$AutoAD+":389"
+
+  
+echo "Adding $AutoAD as the Directory Server"
+
+$Payload=@"
+{
+"connection_type": "LDAP",
+"directory_type": "ACTIVE_DIRECTORY",
+"directory_url": "$directory_url",
+"domain": "ntnxlab.local",
+"group_search_type": "RECURSIVE",
+"name": "NTNXLAB",
+"service_account_username": "administrator@ntnxlab.local",
+"service_account_password": "nutanix/4u"
+}
+"@
+
+$APIParams = @{
+    method="POST"
+    Uri="https://"+$PC_IP+":9440/api/nutanix/v2.0/authconfig/directories/"
+    ContentType="application/json"
+    Body=$Payload
+    Header = $Header_NTNX_Creds
+  }
+  $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+  if ($response = "True"){
+      echo "Authorization to use NTNXLab.local has been created"
+  }else{
+      echo "Authorization to use NTNXLab.local has NOT been created"
+  }
+
+echo "--------------------------------------"
+
+# Add the Role to the SSP Admins group
+
+echo "Adding SSP Admins AD Group to Cluster Admin Role"
+
+$Payload=@"
+{
+    "directoryName": "NTNXLAB",
+    "role": "ROLE_CLUSTER_ADMIN",
+    "entityType": "GROUP",
+    "entityValues":[
+        "SSP Admins"
+    ]
+}
+"@
+
+$APIParams = @{
+    method="POST"
+    Uri="https://"+$PE_IP+":9440/PrismGateway/services/rest/v1/authconfig/directories/NTNXLAB/role_mappings?&entityType=GROUP&role=ROLE_CLUSTER_ADMIN"
+    ContentType="application/json"
+    Body=$Payload
+    Header = $Header_NTNX_Creds
+  }
+  $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+  if ($response = "True"){
+      echo "Authorization to use NTNXLab.local has been created"
+  }else{
+      echo "Authorization to use NTNXLab.local has NOT been created"
+  }
+
+
+echo "Role Added"
 echo "--------------------------------------"
 
 
@@ -595,6 +718,7 @@ echo "Enabling Calm"
 
 
 # Need to check if the PE to PC registration has been done before we move forward to enable Calm. If we've done that, move on.
+
 $APIParams = @{
     method="POST"
     Body='{"perform_validation_only":true}'
@@ -608,6 +732,7 @@ while ($response.length -lt 5){
 }
 
 # Enable Calm
+
 $APIParams = @{
     method="POST"
     Body='{"enable_nutanix_apps":true,"state":"ENABLE"}'
@@ -616,12 +741,15 @@ $APIParams = @{
     Header = $Header_NTNX_Creds
 } 
 $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).state
+
 # Sometimes the enabling of Calm is stuck due to an internal error. Need to retry then.
+
 while ($response -Match "ERROR"){
     $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).state
 }
 
 # Check if Calm is enabled
+
 $APIParams = @{
     method="GET"
     Uri="https://"+$PC_IP+":9440/api/nutanix/v3/services/nucalm/status"
@@ -641,6 +769,7 @@ echo "--------------------------------------"
 echo "Enabling Objects"
 
 # Enable Objects
+
 $APIParams = @{
     method="POST"
     Body='{"state":"ENABLE"}'
@@ -651,6 +780,7 @@ $APIParams = @{
 $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
 
 # Check if the Objects have been enabled
+
 $APIParams = @{
     method="POST"
     Body='{"entity_type":"objectstore"}'
@@ -661,6 +791,7 @@ $APIParams = @{
 $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).total_group_count
 
 # Run a short waitloop before moving on
+
 $counter=1
 while ($response -lt 1){
     echo "Objects not yet ready to be used. Waiting 10 seconds before retry ($counter/30)"
@@ -684,6 +815,7 @@ echo "--------------------------------------"
 echo "Checking if Leap can be enabled"
 
 # Check if the Objects have been enabled
+
 $APIParams = @{
     method="GET"
     Uri="https://"+$PC_IP+":9440/api/nutanix/v3/services/disaster_recovery/status?include_capabilities=true"
@@ -733,7 +865,9 @@ echo "Enabling Karbon"
 
 $Payload_en='{"value":"{\".oid\":\"ClusterManager\",\".method\":\"enable_service_with_prechecks\",\".kwargs\":{\"service_list_json\":\"{\\\"service_list\\\":[\\\"KarbonUIService\\\",\\\"KarbonCoreService\\\"]}\"}}"}'
 $Payload_chk='{"value":"{\".oid\":\"ClusterManager\",\".method\":\"is_service_enabled\",\".kwargs\":{\"service_name\":\"KarbonUIService\"}}"}'
+
 # Enable Karbon
+
 $APIParams = @{
     method="POST"
     Body=$Payload_en
@@ -751,6 +885,7 @@ if ($response.value -Match "true"){
 }
 
 # Checking if Karbon has been enabled
+
 $APIParams = @{
     method="POST"
     Body=$Payload_chk
@@ -774,8 +909,8 @@ if ($counter -eq 12){
 }else{
     echo "Karbon has been enabled"
 }
-echo "--------------------------------------"
 
+echo "--------------------------------------"
 
 # **********************************************************************************
 # Run LCM
