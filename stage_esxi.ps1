@@ -35,7 +35,7 @@ $Header_NTNX_PC_temp_creds=@{"Authorization" = "Basic "+[System.Convert]::ToBase
 echo "##################################################"
 echo "Let's get moving"
 echo "##################################################"
-<#
+
 # **********************************************************************************
 # PE Part of the script
 # **********************************************************************************
@@ -218,13 +218,14 @@ echo "Concentrating on VMware environment.."
 # **********************************************************************************
 # Start the VMware environment manipulations
 # **********************************************************************************
+
 # For this to work we need to connect from vCenter to ESXi and back
 # ********************* vCenter level ***********************************************
 # Connect to the vCenter of the environment
 connect-viserver $VCENTER -User administrator@vsphere.local -Password $password | Out-Null
 
 # Enable DRS on the vCenter
-echo "Enabling DRS on the vCenter environment nd disabling Admission Control"
+echo "Enabling DRS on the vCenter environment and disabling Admission Control"
 $cluster_name=(get-cluster| select $_.name).Name
 Set-Cluster -Cluster $cluster_name -DRSEnabled:$true -HAAdmissionControlEnabled:$false -Confirm:$false | Out-Null
 
@@ -285,19 +286,21 @@ while ($true){
     }
 }
 echo "AutoAD is ready for being used. Progressing..."
-
+echo "--------------------------------------"
 # Close the VMware connection
 disconnect-viserver * -Confirm:$false
 
-# ********************* PE level ***********************************************
-# Confiure PE to use AutoAD for authentication and DNS server
 
-echo "--------------------------------------"
-echo "Switching to Nutanix environment"
+# **********************************************************************************
+# Start the PE environment manipulations
+# **********************************************************************************
+
+# ******************************************************************************
+# Confiure PE to use AutoAD for authentication and DNS server
+# ******************************************************************************
+
 $directory_url="ldap://"+$AutoAD+":389"
-$error=45
   
-echo "--------------------------------------"
 echo "Adding $AutoAD as the Directory Server"
 
 $Payload=@"
@@ -329,7 +332,6 @@ $APIParams = @{
 
 # Removing the DNS servers from the PE and add Just the AutoAD as its DNS server
 echo "Updating DNS Servers"
-echo "--------------------------------------"
 
 # Fill the array with the DNS servers that are there
 $APIParams = @{
@@ -369,7 +371,7 @@ $APIParams = @{
 $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
 
 echo "DNS Servers Updated"
-echo "--------------------------------------"
+
 echo "Adding SSP Admins AD Group to Cluster Admin Role"
 
 $Payload=@"
@@ -400,24 +402,11 @@ $APIParams = @{
 
 echo "Role Added"
 echo "--------------------------------------"
-echo "Add AutoAD to the DNS server confguration"
-
-$APIParams = @{
-    method="GET"
-    Uri="https://"+$PE_IP+":9440/PrismGateway/services/rest/v2.0/cluster/name_servers"
-    ContentType="application/json"
-    Body=$Payload
-    Header = $Header_NTNX_Creds
-  }
-  $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
 
 
-
-# **********************************************************************************
 # Deploy Prism Central
-# **********************************************************************************
+
 echo "Deploying the Prism Central to the environment"
-echo "--------------------------------------"
 
 # Get the Storage UUID as we need it before we can deploy PC
 $APIParams = @{
@@ -539,7 +528,9 @@ while ($response.clusterDetails.ipAddresses -eq $null){
 echo "PE has been registered to PC. Progressing..."
 echo "--------------------------------------"
 
-#>
+# **********************************************************************************
+# Start the PC environment manipulations
+# **********************************************************************************
 
 # **********************************************************************************
 # Set Prism Central password to the same as PE
@@ -578,7 +569,6 @@ if ($response = "True"){
     echo "Eula NOT accepted"
 }
 
-
 # **********************************************************************************
 # Disable PC pulse
 # **********************************************************************************
@@ -596,19 +586,195 @@ if ($response = "True"){
     echo "Pulse NOT disabled"
 }
 echo "--------------------------------------"
+
+
 # **********************************************************************************
 # Enable Calm
 # **********************************************************************************
+echo "Enabling Calm"
 
+
+# Need to check if the PE to PC registration has been done before we move forward to enable Calm. If we've done that, move on.
+$APIParams = @{
+    method="POST"
+    Body='{"perform_validation_only":true}'
+    Uri="https://"+$PC_IP+":9440/api/nutanix/v3/services/nucalm"
+    ContentType="application/json"
+    Header = $Header_NTNX_Creds
+} 
+$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).validation_result_list.has_passed
+while ($response.length -lt 5){
+    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).validation_result_list.has_passed
+}
+
+# Enable Calm
+$APIParams = @{
+    method="POST"
+    Body='{"enable_nutanix_apps":true,"state":"ENABLE"}'
+    Uri="https://"+$PC_IP+":9440/api/nutanix/v3/services/nucalm"
+    ContentType="application/json"
+    Header = $Header_NTNX_Creds
+} 
+$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).state
+# Sometimes the enabling of Calm is stuck due to an internal error. Need to retry then.
+while ($response -Match "ERROR"){
+    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).state
+}
+
+# Check if Calm is enabled
+$APIParams = @{
+    method="GET"
+    Uri="https://"+$PC_IP+":9440/api/nutanix/v3/services/nucalm/status"
+    ContentType="application/json"
+    Header = $Header_NTNX_Creds
+} 
+$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).service_enablement_status
+while ($response -NotMatch "ENABLED"){
+    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).service_enablement_status
+}
+echo "Calm has been enabled"
+echo "--------------------------------------"
 
 # **********************************************************************************
 # Enable Objects
 # **********************************************************************************
+echo "Enabling Objects"
 
+# Enable Objects
+$APIParams = @{
+    method="POST"
+    Body='{"state":"ENABLE"}'
+    Uri="https://"+$PC_IP+":9440/api/nutanix/v3/services/oss"
+    ContentType="application/json"
+    Header = $Header_NTNX_Creds
+} 
+$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+
+# Check if the Objects have been enabled
+$APIParams = @{
+    method="POST"
+    Body='{"entity_type":"objectstore"}'
+    Uri="https://"+$PC_IP+":9440/oss/api/nutanix/v3/groups"
+    ContentType="application/json"
+    Header = $Header_NTNX_Creds
+} 
+$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).total_group_count
+
+# Run a short waitloop before moving on
+$counter=1
+while ($response -lt 1){
+    echo "Objects not yet ready to be used. Waiting 10 seconds before retry ($counter/30)"
+    sleep 10
+    if ($counter -eq 30){
+        echo "We waited for five minutes and Objects didn't become enabled."
+        break
+    }
+    $counter++
+}
+if ($counter -eq 30){
+    echo "Objects has not been enabled. Please use the UI.."
+}else{
+    echo "Objects has been enabled"
+}
+echo "--------------------------------------"
 
 # **********************************************************************************
 # Enable Leap
 # **********************************************************************************
+echo "Checking if Leap can be enabled"
+
+# Check if the Objects have been enabled
+$APIParams = @{
+    method="GET"
+    Uri="https://"+$PC_IP+":9440/api/nutanix/v3/services/disaster_recovery/status?include_capabilities=true"
+    ContentType="application/json"
+    Header = $Header_NTNX_Creds
+} 
+$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).service_capabilities.can_enable.state
+if ($response -eq $true){
+    echo "Leap can be enabled, so progressing."
+    $APIParams = @{
+        method="POST"
+        Body='{"state":"ENABLE"}'
+        Uri="https://"+$PC_IP+":9440/api/nutanix/v3/services/disaster_recovery"
+        ContentType="application/json"
+        Header = $Header_NTNX_Creds
+    } 
+    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).task_uuid
+    # We have been given a task uuid, so need to check if SUCCEEDED as status
+    $APIParams = @{
+        method="GET"
+        Uri="https://"+$PC_IP+":9440/api/nutanix/v3/tasks/$response"
+        ContentType="application/json"
+        Header = $Header_NTNX_Creds
+    } 
+    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).status
+    # Loop for 2 minutes so we can check the task being run successfuly
+    $counter=1
+    while ($response -NotMatch "SUCCEEDED"){
+        sleep 10
+        $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).status
+        if ($counter -eq 12){
+            echo "Waited two minutes and Leap didn't get enabled! Please check the PC UI for the reason."
+        }else{
+            echo "Leap has been enabled"
+        }
+    }
+    if ()
+}else{
+    echo "Leap can not be enabled! Please check the PC UI for the reason."
+}
+echo "--------------------------------------"
+
+# **********************************************************************************
+# Enable Karbon
+# **********************************************************************************
+echo "Enabling Karbon"
+
+$Payload_en='{"value":"{\".oid\":\"ClusterManager\",\".method\":\"enable_service_with_prechecks\",\".kwargs\":{\"service_list_json\":\"{\\\"service_list\\\":[\\\"KarbonUIService\\\",\\\"KarbonCoreService\\\"]}\"}}"}'
+$Payload_chk='{"value":"{\".oid\":\"ClusterManager\",\".method\":\"is_service_enabled\",\".kwargs\":{\"service_name\":\"KarbonUIService\"}}"}'
+# Enable Karbon
+$APIParams = @{
+    method="POST"
+    Body=$Payload_en
+    Uri="https://"+$PC_IP+":9440/PrismGateway/services/rest/v1/genesis"
+    ContentType="application/json"
+    Header = $Header_NTNX_Creds
+} 
+$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+if ($response.value -Match "true"){
+    echo "Enable Karbon command has been received. Waiting for karbon to be ready"
+}else{
+    echo "Retrying enablening Karbon one more time"
+    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+    sleep 10
+}
+
+# Checking if Karbon has been enabled
+$APIParams = @{
+    method="POST"
+    Body=$Payload_chk
+    Uri="https://"+$PC_IP+":9440/PrismGateway/services/rest/v1/genesis"
+    ContentType="application/json"
+    Header = $Header_NTNX_Creds
+} 
+$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+$counter=1
+while ($response.value -NotMatch "true"){
+    echo "Karbon is not ready"
+    sleep 10
+    if ($counter -eq 12){
+        echo "We tried for 2 minutes and Karbon is still not enabled."
+        break
+    }
+    $counter++
+}
+if ($counter -eq 12){
+    echo "Please use the UI to enable Karbon"
+}else{
+    echo "Karbon has been enabled"
+}
+echo "--------------------------------------"
 
 
 # **********************************************************************************
