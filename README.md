@@ -4,6 +4,16 @@ Staging ESXi HPOC systems
 ## Remark
 Below is still in scaffolding!!! Nothing is yet GA!!
 
+## TODO:
+Below items are NOT YET in the script:
+- Full LCM cycle
+- Add VMware as a provider for Calm
+- Create VMware as the Provider for Calm
+- Create Projects
+- Create PC Admin and role
+- Deploy and configure Era
+
+
 ## High level description
 This repo is to have the possibility to create an ESXi staging possibility for ESXi environments.
 As ESXi not supports the same Nutanix products as AHV, this staging script will only install and configure/enable:
