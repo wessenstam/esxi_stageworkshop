@@ -39,13 +39,15 @@ For this type of running the script, Docker has to be installed on your machine.
 - vmware/powerclicore; the name of the container image that is going to be run
 - /script/stage_esxi.ps1; the name of the script including the location **INSIDE** the container. As we have mounted, using the **-v** parameter, the location on the machine that holds the script file to /script in the container, the container needs to be told the absolute full path.
 
+If you want to know more on the Container, please read this
 ## Usage
 Follow these steps to get the staging running:
 
 1. Run **git pull https://github.com/wessenstam/esxi_stageworkshop** to pull the script and needed information
 2. CD into the location where the GitHub Repo has been pulled
-3. Change the **environment.env** file with the needed parameters (password and the IP address of the PE instance)
-4. Run the Powershell script **stage_esxi.ps1** via one of the two options as described earlier
+3. Create a file named **environment.env** with the needed parameters. These parameters are *<PE password>,<IP address of the PE instance>* **example; ThisisSecret,10.10.10.10**
+4. Save the file
+4. Run the Powershell script **stage_esxi.ps1** via one of the two options described earlier
 
 ## Detailed run
 The script will do the following:
