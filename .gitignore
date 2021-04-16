@@ -4,3 +4,4 @@
 *.pwsh
 *-socket
 AutoAD.ova
+environment.env
