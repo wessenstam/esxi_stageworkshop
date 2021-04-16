@@ -42,12 +42,12 @@ If the machine is Mac or Linux, it is still possible to install PowerShell. Plea
 Independent of your O/S and running Native PowerShell, you have to follow this article to get the VMware POwerCLI installed https://developer.vmware.com/powercli/installation-guide. 
 
 ### Docker version of PowerCLI
-For this type of running the script, Docker has to be installed on your machine. There are a lot of articles on how to install Docker on your O/S. Follow this article to install Docker for your O/S https://docs.docker.com/get-docker/. After you have installed Docker, you can use the following command to run the script: **docker run --rm -it -v ${PWD}:/scripts vmware/powerclicore /script/stage_esxi.ps1** .Where:
+For this type of running the script, Docker has to be installed on your machine. There are a lot of articles on how to install Docker on your O/S. Follow this article to install Docker for your O/S https://docs.docker.com/get-docker/. After you have installed Docker, you can use the following command to run the script: **docker run --rm -it -v ${PWD}:/script vmware/powerclicore /script/stage_esxi.ps1** .Where:
 
 - --rm; after the container has stopped, remove it from the docker environment
 - -it; run in interactive mode, show the console output of the script
 - -v; "mount" the following path **${PWD}** (current directory) to the **/script** diectory INSIDE the container
-- vmware/powerclicore; the name of the container image that is going to be run
+- vmware/powerclicore; the name of the container image that is going to be run. It will be downloaded automatically if it doesn't exist on the machine.
 - /script/stage_esxi.ps1; the name of the script including the location **INSIDE** the container. As we have mounted, using the **-v** parameter, the location on the machine that holds the script file to /script in the container, the container needs to be told the absolute full path.
 
 If you want to know more on the container, please read this https://github.com/vmware/powerclicore
