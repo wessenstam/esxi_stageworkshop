@@ -6,7 +6,7 @@ Set-PowerCLIConfiguration -Scope User -ParticipateInCEIP:$false -confirm:$false 
 # **********************************************************************************
 # Setting the needed variables
 # **********************************************************************************
-$parameters=get-content "./environment.env"
+$parameters=get-content "/script/environment.env"
 $password=$parameters.Split(",")[0]
 $PE_IP=$parameters.Split(",")[1]
 
@@ -42,9 +42,9 @@ $Header_NTNX_PC_temp_creds=@{"Authorization" = "Basic "+[System.Convert]::ToBase
 
 # Get something on the screen...
 
-echo "*************************************************"
-echo "Concentrating on Nutanix PE environment.."
-echo "*************************************************"
+Write-Output "*************************************************"
+Write-Output "Concentrating on Nutanix PE environment.."
+Write-Output "*************************************************"
 
 # **********************************************************************************
 # PE Part of the script
@@ -61,12 +61,12 @@ $APIParams = @{
 } 
 $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).value
 if ($response = "True"){
-    echo "Eula Accepted"
+    Write-Output "Eula Accepted"
 }else{
-    echo "Eula NOT accepted"
+    Write-Output "Eula NOT accepted"
 }
 
-echo "--------------------------------------"
+Write-Output "--------------------------------------"
 
 # Disable Pulse
 
@@ -79,12 +79,12 @@ $APIParams = @{
 } 
 $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).value
 if ($response = "True"){
-    echo "Pulse Disabled"
+    Write-Output "Pulse Disabled"
 }else{
-    echo "Pulse NOT disabled"
+    Write-Output "Pulse NOT disabled"
 }
 
-echo "--------------------------------------"
+Write-Output "--------------------------------------"
 
 # Change the name of the Storage Pool to SP1
 
@@ -119,12 +119,12 @@ $APIParams = @{
 
 $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).value
 if ($response="True"){
-    echo "Storage Pool has been renamed"
+    Write-Output "Storage Pool has been renamed"
 }else{
-    echo "Storage Pool has not been renamed"
+    Write-Output "Storage Pool has not been renamed"
 }
 
-echo "--------------------------------------"
+Write-Output "--------------------------------------"
 
 # Change the name of the defaulxxxx storage container to Default
 
@@ -161,12 +161,12 @@ $APIParams = @{
 }
 $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
 if ($response = "True"){
-    echo "Default Storage Container has been updated"
+    Write-Output "Default Storage Container has been updated"
 }else{
-    echo "Default Storage Container has NOT been updated"
+    Write-Output "Default Storage Container has NOT been updated"
 }
 
-echo "--------------------------------------"
+Write-Output "--------------------------------------"
 
 # Create the Images datastore
 
@@ -200,12 +200,12 @@ $APIParams = @{
 }
 $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
 if ($response = "True"){
-    echo "Images Storage Container has been created"
+    Write-Output "Images Storage Container has been created"
 }else{
-    echo "Images Storage Container has NOT been created"
+    Write-Output "Images Storage Container has NOT been created"
 }
 
-echo "--------------------------------------"
+Write-Output "--------------------------------------"
 
 # Mount the Images container to all ESXi hosts
 
@@ -240,9 +240,9 @@ $APIParams = @{
 }
 $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
 
-echo "*************************************************"
-echo "Concentrating on VMware environment.."
-echo "*************************************************"
+Write-Output "*************************************************"
+Write-Output "Concentrating on VMware environment.."
+Write-Output "*************************************************"
 
 # **********************************************************************************
 # Start the VMware environment manipulations
@@ -254,28 +254,28 @@ connect-viserver $VCENTER -User administrator@vsphere.local -Password $password 
 
 # Enable DRS on the vCenter
 
-echo "Enabling DRS on the vCenter environment and disabling Admission Control"
+Write-Output "Enabling DRS on the vCenter environment and disabling Admission Control"
 $cluster_name=(get-cluster| select $_.name).Name
 Set-Cluster -Cluster $cluster_name -DRSEnabled:$true -HAAdmissionControlEnabled:$false -Confirm:$false | Out-Null
 
-echo "--------------------------------------"
+Write-Output "--------------------------------------"
 
 # Create a new Portgroup called Secondary with the correct VLAN
 
-echo "Creating the Secondary network on the ESXi hosts"
+Write-Output "Creating the Secondary network on the ESXi hosts"
 $vmhosts = Get-Cluster $cluster_name | Get-VMhost
 
 ForEach ($vmhost in $vmhosts){
     Get-VirtualSwitch -VMhost $vmhost -Name "vSwitch0" | New-VirtualPortGroup -Name 'Secondary' -VlanId $vlan | Out-Null
 }
 
-echo "--------------------------------------"
+Write-Output "--------------------------------------"
 
-echo "Uploading needed images"
+Write-Output "Uploading needed images"
 
 # Create a ContentLibray and copy the needed images to it
 
-New-ContentLibrary -Name "deploy" -Datastore "Images"
+New-ContentLibrary -Name "deploy" -Datastore "Images" | Out-Null
 $images=@('esxi_ovas/AutoAD_Sysprep.ova','esxi_ovas/WinTools-AHV.ova','esxi_ovas/CentOS.ova','CentOS7.iso','Windows2016.iso')
 foreach($image in $images){
     # Making sure we set the correct nameing for the ContentLibaray by removing the leading sublocation on the HTTP server
@@ -291,45 +291,45 @@ foreach($image in $images){
     }else{
         $image_short=$image
     }
-    get-ContentLibrary -Name 'deploy' -Local |New-ContentLibraryItem -name $image_short -FileName $image_name -Uri "http://$nfs_host/workshop_staging/$image"
-    echo "Uploaded $image as $image_short in the deploy ContentLibrary"
+    get-ContentLibrary -Name 'deploy' -Local |New-ContentLibraryItem -name $image_short -FileName $image_name -Uri "http://$nfs_host/workshop_staging/$image"| Out-Null
+    Write-Output "Uploaded $image as $image_short in the deploy ContentLibrary"
 }
 
-echo "--------------------------------------"
+Write-Output "--------------------------------------"
 
 # Deploy an AutoAD OVA. DRS will take care of the rest.
 
 $ESXi_Host=$vmhosts[0]
 
-echo "Deploying the WinTools VM via a Content Library in the Image Datastore"
+Write-Output "Deploying the WinTools VM via a Content Library in the Image Datastore"
 Get-ContentLibraryitem -name 'WinTools-AHV' | new-vm -Name 'WinTools-VM' -vmhost $ESXi_Host -Datastore "vmContainer1" | Out-Null
 get-vm 'WinTools-VM' | Get-NetworkAdapter | Set-NetworkAdapter -NetworkName 'VM Network' -Confirm:$false | Out-Null
 
-echo "WindowsTools VM has been created"
-echo "--------------------------------------"
+Write-Output "WindowsTools VM has been created"
+Write-Output "--------------------------------------"
 
-echo "Deploying the CentOS7 VM via a Content Library in the Image Datastore and transforming into a Template"
+Write-Output "Deploying the CentOS7 VM via a Content Library in the Image Datastore and transforming into a Template"
 Get-ContentLibraryitem -name 'CentOS' | new-vm -Name 'CentOS-Templ' -vmhost $ESXi_Host -Datastore "vmContainer1" | Out-Null
 get-vm 'CentOS-Templ' | Get-NetworkAdapter | Set-NetworkAdapter -NetworkName 'VM Network' -Confirm:$false | Out-Null
 Get-VM -Name 'CentOS-Templ' | Set-VM -ToTemplate -Confirm:$false
 
-echo "A template for CentOS 7 has been created"
-echo "--------------------------------------"
+Write-Output "A template for CentOS 7 has been created"
+Write-Output "--------------------------------------"
 
 
-echo "Creating AutoAD VM via a Content Library in the Image Datastore"
+Write-Output "Creating AutoAD VM via a Content Library in the Image Datastore"
 Get-ContentLibraryitem -name 'AutoAD_Sysprep' | new-vm -Name AutoAD -vmhost $ESXi_Host -Datastore "vmContainer1" | Out-Null
 
 # Set the network to VM-Network before starting the VM
 
 get-vm 'AutoAD' | Get-NetworkAdapter | Set-NetworkAdapter -NetworkName 'VM Network' -Confirm:$false | Out-Null
 
-echo "--------------------------------------"
+Write-Output "--------------------------------------"
 
-echo "AutoAD VM has been created. Starting..."
+Write-Output "AutoAD VM has been created. Starting..."
 Start-VM -VM 'AutoAD' | Out-Null
 
-echo "Waiting till AutoAD is ready.."
+Write-Output "Waiting till AutoAD is ready.."
 $counter=1
 $url="http://"+$AutoAD+":8000"
 while ($true){
@@ -337,17 +337,17 @@ while ($true){
         $response=invoke-Webrequest -Uri $url -TimeOut 15
         Break
     }catch{
-        echo "AutoAD still not ready. Sleeping 60 seconds before retrying...($counter/20)"
+        Write-Output "AutoAD still not ready. Sleeping 60 seconds before retrying...($counter/20)"
         sleep 60
         if ($counter -eq 20){
-            echo "We waited for 20 minutes and the AutoAD didn't got ready in time..."
+            Write-Output "We waited for 20 minutes and the AutoAD didn't got ready in time..."
             exit 1
         }
         $counter++
     }
 }
-echo "AutoAD is ready for being used. Progressing..."
-echo "--------------------------------------"
+Write-Output "AutoAD is ready for being used. Progressing..."
+Write-Output "--------------------------------------"
 
 # Close the VMware connection
 
@@ -356,15 +356,15 @@ disconnect-viserver * -Confirm:$false
 # **********************************************************************************
 # Start the PE environment manipulations
 # **********************************************************************************
-echo "*************************************************"
-echo "Concentrating on Nutanix PE environment.."
-echo "*************************************************"
+Write-Output "*************************************************"
+Write-Output "Concentrating on Nutanix PE environment.."
+Write-Output "*************************************************"
 
 # Confiure PE to use AutoAD for authentication and DNS server
 
 $directory_url="ldap://"+$AutoAD+":389"
   
-echo "Adding $AutoAD as the Directory Server"
+Write-Output "Adding $AutoAD as the Directory Server"
 
 $Payload=@"
 {
@@ -388,16 +388,16 @@ $APIParams = @{
   }
   $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
   if ($response = "True"){
-      echo "Authorization to use NTNXLab.local has been created"
+      Write-Output "Authorization to use NTNXLab.local has been created"
   }else{
-      echo "Authorization to use NTNXLab.local has NOT been created"
+      Write-Output "Authorization to use NTNXLab.local has NOT been created"
   }
 
-echo "--------------------------------------"
+Write-Output "--------------------------------------"
 
 # Removing the DNS servers from the PE and add Just the AutoAD as its DNS server
 
-echo "Updating DNS Servers"
+Write-Output "Updating DNS Servers"
 
 # Fill the array with the DNS servers that are there
 
@@ -415,7 +415,7 @@ $servers=$response
 
 foreach($server in $servers){
     $Payload='[{"ipv4":"'+$server+'"}]'
-    echo $Payload
+    Write-Output $Payload
     $APIParams = @{
         method="POST"
         Uri="https://"+$PE_IP+":9440/PrismGateway/services/rest/v1/cluster/name_servers/remove_list"
@@ -429,7 +429,6 @@ foreach($server in $servers){
 # Get the AutoAD as correct DNS in
 
 $Payload='{"value":"'+$AutoAD+'"}'
-echo $Payload
 $APIParams = @{
     method="POST"
     Uri="https://"+$PE_IP+":9440/PrismGateway/services/rest/v1/cluster/name_servers"
@@ -439,11 +438,11 @@ $APIParams = @{
 }
 $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
 
-echo "DNS Servers Updated"
+Write-Output "DNS Servers Updated"
 
-cho "--------------------------------------"
+Write-Output "--------------------------------------"
 
-echo "Adding SSP Admins AD Group to Cluster Admin Role"
+Write-Output "Adding SSP Admins AD Group to Cluster Admin Role"
 
 $Payload=@"
 {
@@ -465,17 +464,17 @@ $APIParams = @{
   }
   $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
   if ($response = "True"){
-      echo "SSP Admins have been added as the Cluster Admin Role"
+      Write-Output "SSP Admins have been added as the Cluster Admin Role"
   }else{
-      echo "SSP Admins have not been added as the CLuster Admin Role"
+      Write-Output "SSP Admins have not been added as the CLuster Admin Role"
   }
 
-echo "--------------------------------------"
+Write-Output "--------------------------------------"
 
 
 # Deploy Prism Central
 
-echo "Deploying the Prism Central to the environment"
+Write-Output "Deploying the Prism Central to the environment"
 
 # Get the Storage UUID as we need it before we can deploy PC
 
@@ -545,14 +544,14 @@ $APIParams = @{
 try{
     $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
 }catch{
-    echo "The PC download and deployment could not be executed. Exiting the script."
-    echo "Received error was: $_.Exception.Message"
+    Write-Output "The PC download and deployment could not be executed. Exiting the script."
+    Write-Output "Received error was: $_.Exception.Message"
     exit 1
 }
 
 
-echo "Deployment of PC has started. Now need to wait till it is up and running"
-echo "Waiting till PC is ready.. (could take up to 30+ minutes)"
+Write-Output "Deployment of PC has started. Now need to wait till it is up and running"
+Write-Output "Waiting till PC is ready.. (could take up to 30+ minutes)"
 $counter=1
 $url="https://"+$PC_IP+":9440"
 
@@ -566,21 +565,21 @@ while ($true){
         $response=invoke-Webrequest -Uri $url -TimeOut 15 -SkipCertificateCheck -Credential $cred
         Break
     }catch{
-        echo "PC still not ready. Sleeping 60 seconds before retrying...($counter/45)"
+        Write-Output "PC still not ready. Sleeping 60 seconds before retrying...($counter/45)"
         sleep 60
         if ($counter -eq 45){
-            echo "We waited for 45 minutes and the AutoAD didn't got ready in time..."
+            Write-Output "We waited for 45 minutes and the AutoAD didn't got ready in time..."
             exit 1
         }
         $counter++
     }
 }
-echo "PC is ready for being used. Progressing..."
-echo "--------------------------------------"
+Write-Output "PC is ready for being used. Progressing..."
+Write-Output "--------------------------------------"
 
 # Check if registration was successfull of PE to PC
 
-echo "Checking if PE has been registred to PC"
+Write-Output "Checking if PE has been registred to PC"
 $APIParams = @{
   method="GET"
   Uri="https://"+$PE_IP+":9440/PrismGateway/services/rest/v1/multicluster/cluster_external_state"
@@ -591,24 +590,24 @@ $APIParams = @{
 $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
 $count=1
 while ($response.clusterDetails.ipAddresses -eq $null){
-    echo "PE is not yet registered to PC. Waiting a bit more.."
+    Write-Output "PE is not yet registered to PC. Waiting a bit more.."
     $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
     sleep 60
     if ($count -gt 10){
-        echo "Waited for 10 minutes. Giving up. Exiting the script."
+        Write-Output "Waited for 10 minutes. Giving up. Exiting the script."
         exit 3
     }
     $count++
 }
-echo "PE has been registered to PC. Progressing..."
-echo "--------------------------------------"
+Write-Output "PE has been registered to PC. Progressing..."
+Write-Output "--------------------------------------"
 
 # **********************************************************************************
 # Start the PC environment manipulations
 # **********************************************************************************
-echo "*************************************************"
-echo "Concentrating on Nutanix PC environment.."
-echo "*************************************************"
+Write-Output "*************************************************"
+Write-Output "Concentrating on Nutanix PC environment.."
+Write-Output "*************************************************"
 
 # Set Prism Central password to the same as PE
 
@@ -625,13 +624,13 @@ $APIParams = @{
 
 $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck -Credential $cred)
 if ($response = "True"){
-    echo "PC Password has been changed to the same as PE"
+    Write-Output "PC Password has been changed to the same as PE"
 }else{
-    echo "PC Password has NOT been changed to the same as PE. Exiting script."
+    Write-Output "PC Password has NOT been changed to the same as PE. Exiting script."
     exit 2
 }
 
-echo "--------------------------------------"
+Write-Output "--------------------------------------"
 
 
 # Accept the PC Eula
@@ -645,12 +644,12 @@ $APIParams = @{
 } 
 $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).value
 if ($response = "True"){
-    echo "Eula Accepted"
+    Write-Output "Eula Accepted"
 }else{
-    echo "Eula NOT accepted"
+    Write-Output "Eula NOT accepted"
 }
 
-echo "--------------------------------------"
+Write-Output "--------------------------------------"
 
 
 # Disable PC pulse
@@ -664,19 +663,19 @@ $APIParams = @{
 } 
 $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).value
 if ($response = "True"){
-    echo "Pulse Disabled"
+    Write-Output "Pulse Disabled"
 }else{
-    echo "Pulse NOT disabled"
+    Write-Output "Pulse NOT disabled"
 }
 
-echo "--------------------------------------"
+Write-Output "--------------------------------------"
 
 # Add the AutoAD as the Directory server
 
 $directory_url="ldap://"+$AutoAD+":389"
 
   
-echo "Adding $AutoAD as the Directory Server"
+Write-Output "Adding $AutoAD as the Directory Server"
 
 $Payload=@"
 {
@@ -700,16 +699,16 @@ $APIParams = @{
   }
   $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
   if ($response = "True"){
-      echo "Authorization to use NTNXLab.local has been created"
+      Write-Output "Authorization to use NTNXLab.local has been created"
   }else{
-      echo "Authorization to use NTNXLab.local has NOT been created"
+      Write-Output "Authorization to use NTNXLab.local has NOT been created"
   }
 
-echo "--------------------------------------"
+Write-Output "--------------------------------------"
 
 # Add the Role to the SSP Admins group
 
-echo "Adding SSP Admins AD Group to Cluster Admin Role"
+Write-Output "Adding SSP Admins AD Group to Cluster Admin Role"
 
 $Payload=@"
 {
@@ -731,20 +730,20 @@ $APIParams = @{
   }
   $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
   if ($response = "True"){
-      echo "Authorization to use NTNXLab.local has been created"
+      Write-Output "Authorization to use NTNXLab.local has been created"
   }else{
-      echo "Authorization to use NTNXLab.local has NOT been created"
+      Write-Output "Authorization to use NTNXLab.local has NOT been created"
   }
 
 
-echo "Role Added"
-echo "--------------------------------------"
+Write-Output "Role Added"
+Write-Output "--------------------------------------"
 
 
 # **********************************************************************************
 # Enable Calm
 # **********************************************************************************
-echo "Enabling Calm"
+Write-Output "Enabling Calm"
 
 
 # Need to check if the PE to PC registration has been done before we move forward to enable Calm. If we've done that, move on.
@@ -791,13 +790,13 @@ while ($response -NotMatch "ENABLED"){
     $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).service_enablement_status
 }
 sleep 60
-echo "Calm has been enabled"
-echo "--------------------------------------"
+Write-Output "Calm has been enabled"
+Write-Output "--------------------------------------"
 
 # **********************************************************************************
 # Enable Objects
 # **********************************************************************************
-echo "Enabling Objects"
+Write-Output "Enabling Objects"
 
 # Enable Objects
 
@@ -825,25 +824,25 @@ $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).total_group_count
 
 $counter=1
 while ($response.length -lt 1){
-    echo "Objects not yet ready to be used. Waiting 10 seconds before retry ($counter/30)"
+    Write-Output "Objects not yet ready to be used. Waiting 10 seconds before retry ($counter/30)"
     sleep 10
     if ($counter -eq 30){
-        echo "We waited for five minutes and Objects didn't become enabled."
+        Write-Output "We waited for five minutes and Objects didn't become enabled."
         break
     }
     $counter++
 }
 if ($counter -eq 30){
-    echo "Objects has not been enabled. Please use the UI.."
+    Write-Output "Objects has not been enabled. Please use the UI.."
 }else{
-    echo "Objects has been enabled"
+    Write-Output "Objects has been enabled"
 }
-echo "--------------------------------------"
+Write-Output "--------------------------------------"
 
 # **********************************************************************************
 # Enable Leap
 # **********************************************************************************
-echo "Checking if Leap can be enabled"
+Write-Output "Checking if Leap can be enabled"
 
 # Check if the Objects have been enabled
 
@@ -855,7 +854,7 @@ $APIParams = @{
 } 
 $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).service_capabilities.can_enable.state
 if ($response -eq $true){
-    echo "Leap can be enabled, so progressing."
+    Write-Output "Leap can be enabled, so progressing."
     $APIParams = @{
         method="POST"
         Body='{"state":"ENABLE"}'
@@ -878,20 +877,20 @@ if ($response -eq $true){
         sleep 10
         $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).status
         if ($counter -eq 12){
-            echo "Waited two minutes and Leap didn't get enabled! Please check the PC UI for the reason."
+            Write-Output "Waited two minutes and Leap didn't get enabled! Please check the PC UI for the reason."
         }else{
-            echo "Leap has been enabled"
+            Write-Output "Leap has been enabled"
         }
     }
 }else{
-    echo "Leap can not be enabled! Please check the PC UI for the reason."
+    Write-Output "Leap can not be enabled! Please check the PC UI for the reason."
 }
-echo "--------------------------------------"
+Write-Output "--------------------------------------"
 
 # **********************************************************************************
 # Enable Karbon
 # **********************************************************************************
-echo "Enabling Karbon"
+Write-Output "Enabling Karbon"
 
 $Payload_en='{"value":"{\".oid\":\"ClusterManager\",\".method\":\"enable_service_with_prechecks\",\".kwargs\":{\"service_list_json\":\"{\\\"service_list\\\":[\\\"KarbonUIService\\\",\\\"KarbonCoreService\\\"]}\"}}"}'
 $Payload_chk='{"value":"{\".oid\":\"ClusterManager\",\".method\":\"is_service_enabled\",\".kwargs\":{\"service_name\":\"KarbonUIService\"}}"}'
@@ -907,9 +906,9 @@ $APIParams = @{
 } 
 $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
 if ($response.value -Match "true"){
-    echo "Enable Karbon command has been received. Waiting for karbon to be ready"
+    Write-Output "Enable Karbon command has been received. Waiting for karbon to be ready"
 }else{
-    echo "Retrying enablening Karbon one more time"
+    Write-Output "Retrying enablening Karbon one more time"
     $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
     sleep 10
 }
@@ -926,21 +925,21 @@ $APIParams = @{
 $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
 $counter=1
 while ($response.value -NotMatch "true"){
-    echo "Karbon is not ready"
+    Write-Output "Karbon is not ready"
     sleep 10
     if ($counter -eq 12){
-        echo "We tried for 2 minutes and Karbon is still not enabled."
+        Write-Output "We tried for 2 minutes and Karbon is still not enabled."
         break
     }
     $counter++
 }
 if ($counter -eq 12){
-    echo "Please use the UI to enable Karbon"
+    Write-Output "Please use the UI to enable Karbon"
 }else{
-    echo "Karbon has been enabled"
+    Write-Output "Karbon has been enabled"
 }
 
-echo "--------------------------------------"
+Write-Output "--------------------------------------"
 
 # **********************************************************************************
 # Run LCM
