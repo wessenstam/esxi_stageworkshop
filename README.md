@@ -6,13 +6,14 @@ Below is still in scaffolding!!! Nothing is yet GA!!
 
 ## High level description
 This repo is to have the possibility to create an ESXi staging possibility for ESXi environments.
-As ESXi not supports the same Nutanix products as AHV, this staging script will only install and configure:
+As ESXi not supports the same Nutanix products as AHV, this staging script will only install and configure/enable:
 1. Prism Central
 2. Calm
 3. Files
 4. Objects
 5. Era
 6. Leap
+7. Karbon
 
 ## Staging requirements
 As the ESXi environment can not be 100% configured to the needs using REST APIs, PowerShell is being used. To run Powershell two paths can be followed:
@@ -33,13 +34,13 @@ Independent of your O/S and running Native PowerShell, you have to follow this a
 ### Docker version of PowerCLI
 For this type of running the script, Docker has to be installed on your machine. There are a lot of articles on how to install Docker on your O/S. Follow this article to install Docker for your O/S https://docs.docker.com/get-docker/. After you have installed Docker, you can use the following command to run the script: **docker run --rm -it -v ${PWD}:/scripts vmware/powerclicore /script/stage_esxi.ps1** .Where:
 
-- --rm; after the Container has stopped, remove it from the docker environment
+- --rm; after the container has stopped, remove it from the docker environment
 - -it; run in interactive mode, show the console output of the script
-- -v; "mount" the following path ${PWD} (current directory that holds the script)
+- -v; "mount" the following path **${PWD}** (current directory) to the **/script** diectory INSIDE the container
 - vmware/powerclicore; the name of the container image that is going to be run
 - /script/stage_esxi.ps1; the name of the script including the location **INSIDE** the container. As we have mounted, using the **-v** parameter, the location on the machine that holds the script file to /script in the container, the container needs to be told the absolute full path.
 
-If you want to know more on the Container, please read this
+If you want to know more on the container, please read this https://github.com/vmware/powerclicore
 ## Usage
 Follow these steps to get the staging running:
 
