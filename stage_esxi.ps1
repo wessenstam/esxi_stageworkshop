@@ -42,9 +42,9 @@ $Header_NTNX_PC_temp_creds=@{"Authorization" = "Basic "+[System.Convert]::ToBase
 
 # Get something on the screen...
 
-echo "##################################################"
-echo "Let's get moving"
-echo "##################################################"
+echo "*************************************************"
+echo "Concentrating on Nutanix PE environment.."
+echo "*************************************************"
 
 # **********************************************************************************
 # PE Part of the script
@@ -239,10 +239,10 @@ $APIParams = @{
     Header = $Header_NTNX_Creds
 }
 $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
-echo $response
 
-echo "--------------------------------------"
+echo "*************************************************"
 echo "Concentrating on VMware environment.."
+echo "*************************************************"
 
 # **********************************************************************************
 # Start the VMware environment manipulations
@@ -266,7 +266,7 @@ echo "Creating the Secondary network on the ESXi hosts"
 $vmhosts = Get-Cluster $cluster_name | Get-VMhost
 
 ForEach ($vmhost in $vmhosts){
-    Get-VirtualSwitch -VMhost $vmhost -Name "vSwitch0" | New-VirtualPortGroup -Name Secondary -VlanId $vlan | Out-Null
+    Get-VirtualSwitch -VMhost $vmhost -Name "vSwitch0" | New-VirtualPortGroup -Name 'Secondary' -VlanId $vlan | Out-Null
 }
 
 echo "--------------------------------------"
@@ -300,6 +300,23 @@ echo "--------------------------------------"
 # Deploy an AutoAD OVA. DRS will take care of the rest.
 
 $ESXi_Host=$vmhosts[0]
+
+echo "Deploying the WinTools VM via a Content Library in the Image Datastore"
+Get-ContentLibraryitem -name 'WinTools-AHV' | new-vm -Name 'WinTools-VM' -vmhost $ESXi_Host -Datastore "vmContainer1" | Out-Null
+get-vm 'WinTools-VM' | Get-NetworkAdapter | Set-NetworkAdapter -NetworkName 'VM Network' -Confirm:$false | Out-Null
+
+echo "WindowsTools VM has been created"
+echo "--------------------------------------"
+
+echo "Deploying the CentOS7 VM via a Content Library in the Image Datastore and transforming into a Template"
+Get-ContentLibraryitem -name 'CentOS' | new-vm -Name 'CentOS-Templ' -vmhost $ESXi_Host -Datastore "vmContainer1" | Out-Null
+get-vm 'CentOS-Templ' | Get-NetworkAdapter | Set-NetworkAdapter -NetworkName 'VM Network' -Confirm:$false | Out-Null
+Get-VM -Name 'CentOS-Templ' | Set-VM -ToTemplate -Confirm:$false
+
+echo "A template for CentOS 7 has been created"
+echo "--------------------------------------"
+
+
 echo "Creating AutoAD VM via a Content Library in the Image Datastore"
 Get-ContentLibraryitem -name 'AutoAD_Sysprep' | new-vm -Name AutoAD -vmhost $ESXi_Host -Datastore "vmContainer1" | Out-Null
 
@@ -339,7 +356,9 @@ disconnect-viserver * -Confirm:$false
 # **********************************************************************************
 # Start the PE environment manipulations
 # **********************************************************************************
-
+echo "*************************************************"
+echo "Concentrating on Nutanix PE environment.."
+echo "*************************************************"
 
 # Confiure PE to use AutoAD for authentication and DNS server
 
@@ -587,7 +606,9 @@ echo "--------------------------------------"
 # **********************************************************************************
 # Start the PC environment manipulations
 # **********************************************************************************
-
+echo "*************************************************"
+echo "Concentrating on Nutanix PC environment.."
+echo "*************************************************"
 
 # Set Prism Central password to the same as PE
 
@@ -703,7 +724,7 @@ $Payload=@"
 
 $APIParams = @{
     method="POST"
-    Uri="https://"+$PE_IP+":9440/PrismGateway/services/rest/v1/authconfig/directories/NTNXLAB/role_mappings?&entityType=GROUP&role=ROLE_CLUSTER_ADMIN"
+    Uri="https://"+$PC_IP+":9440/PrismGateway/services/rest/v1/authconfig/directories/NTNXLAB/role_mappings?&entityType=GROUP&role=ROLE_CLUSTER_ADMIN"
     ContentType="application/json"
     Body=$Payload
     Header = $Header_NTNX_Creds
@@ -769,6 +790,7 @@ $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).service_enablemen
 while ($response -NotMatch "ENABLED"){
     $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).service_enablement_status
 }
+sleep 60
 echo "Calm has been enabled"
 echo "--------------------------------------"
 
@@ -802,7 +824,7 @@ $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).total_group_count
 # Run a short waitloop before moving on
 
 $counter=1
-while ($response -lt 1){
+while ($response.length -lt 1){
     echo "Objects not yet ready to be used. Waiting 10 seconds before retry ($counter/30)"
     sleep 10
     if ($counter -eq 30){
@@ -861,7 +883,6 @@ if ($response -eq $true){
             echo "Leap has been enabled"
         }
     }
-    if ()
 }else{
     echo "Leap can not be enabled! Please check the PC UI for the reason."
 }
