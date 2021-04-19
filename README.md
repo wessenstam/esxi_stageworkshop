@@ -8,7 +8,6 @@ Below is still in scaffolding!!! Nothing is yet GA!!
 Below items are NOT YET in the script:
 - Full LCM cycle
 - Add VMware as a provider for Calm
-- Create VMware as the Provider for Calm
 - Create Projects
 - Create PC Admin and role
 - Deploy and configure Era

@@ -6,7 +6,7 @@ Set-PowerCLIConfiguration -Scope User -ParticipateInCEIP:$false -confirm:$false 
 # **********************************************************************************
 # Setting the needed variables
 # **********************************************************************************
-$parameters=get-content "/script/environment.env"
+$parameters=get-content "./environment.env"
 $password=$parameters.Split(",")[0]
 $PE_IP=$parameters.Split(",")[1]
 
@@ -303,14 +303,14 @@ $ESXi_Host=$vmhosts[0]
 
 Write-Output "Deploying the WinTools VM via a Content Library in the Image Datastore"
 Get-ContentLibraryitem -name 'WinTools-AHV' | new-vm -Name 'WinTools-VM' -vmhost $ESXi_Host -Datastore "vmContainer1" | Out-Null
-get-vm 'WinTools-VM' | Get-NetworkAdapter | Set-NetworkAdapter -NetworkName 'VM Network' -Confirm:$false | Out-Null
+get-vm 'WinTools-VM' | Get-NetworkAdapter | Set-NetworkAdapter -NetworkName 'Secondary' -Confirm:$false | Out-Null
 
 Write-Output "WindowsTools VM has been created"
 Write-Output "--------------------------------------"
 
 Write-Output "Deploying the CentOS7 VM via a Content Library in the Image Datastore and transforming into a Template"
 Get-ContentLibraryitem -name 'CentOS' | new-vm -Name 'CentOS-Templ' -vmhost $ESXi_Host -Datastore "vmContainer1" | Out-Null
-get-vm 'CentOS-Templ' | Get-NetworkAdapter | Set-NetworkAdapter -NetworkName 'VM Network' -Confirm:$false | Out-Null
+get-vm 'CentOS-Templ' | Get-NetworkAdapter | Set-NetworkAdapter -NetworkName 'Secondary' -Confirm:$false | Out-Null
 Get-VM -Name 'CentOS-Templ' | Set-VM -ToTemplate -Confirm:$false
 
 Write-Output "A template for CentOS 7 has been created"
@@ -809,8 +809,8 @@ $APIParams = @{
 } 
 $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
 
+sleep 10
 # Check if the Objects have been enabled
-
 $APIParams = @{
     method="POST"
     Body='{"entity_type":"objectstore"}'
@@ -823,7 +823,7 @@ $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).total_group_count
 # Run a short waitloop before moving on
 
 $counter=1
-while ($response.length -lt 1){
+while ($response -lt 1){
     Write-Output "Objects not yet ready to be used. Waiting 10 seconds before retry ($counter/30)"
     sleep 10
     if ($counter -eq 30){
@@ -866,21 +866,25 @@ if ($response -eq $true){
     # We have been given a task uuid, so need to check if SUCCEEDED as status
     $APIParams = @{
         method="GET"
-        Uri="https://"+$PC_IP+":9440/api/nutanix/v3/tasks/$response"
+        Uri="https://"+$PC_IP+":9440/api/nutanix/v3/tasks/"+$response
         ContentType="application/json"
         Header = $Header_NTNX_Creds
     } 
     $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).status
     # Loop for 2 minutes so we can check the task being run successfuly
-    $counter=1
-    while ($response -NotMatch "SUCCEEDED"){
-        sleep 10
-        $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).status
-        if ($counter -eq 12){
-            Write-Output "Waited two minutes and Leap didn't get enabled! Please check the PC UI for the reason."
-        }else{
-            Write-Output "Leap has been enabled"
+    if ($response -NotMatch "SUCCEEDED"){
+        $counter=1
+        while ($response -NotMatch "SUCCEEDED"){
+            sleep 10
+            $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).status
+            if ($counter -eq 12){
+                Write-Output "Waited two minutes and Leap didn't get enabled! Please check the PC UI for the reason."
+            }else{
+                Write-Output "Leap has been enabled"
+            }
         }
+    }else{
+        Write-Output "Leap has been enabled"
     }
 }else{
     Write-Output "Leap can not be enabled! Please check the PC UI for the reason."
@@ -944,6 +948,44 @@ Write-Output "--------------------------------------"
 # **********************************************************************************
 # Run LCM
 # **********************************************************************************
+$Payload='{"value":"{\".oid\":\"LifeCycleManager\",\".method\":\"lcm_framework_rpc\",\".kwargs\":{\"method_class\":\"LcmFramework\",\"method\":\"perform_inventory\",\"args\":[\"http://download.nutanix.com/lcm/2.0\"]}}"}'
+$APIParams = @{
+    method="POST"
+    Body=$Payload
+    Uri="https://"+$PC_IP+":9440/PrismGateway/services/rest/v1/genesis"
+    ContentType="application/json"
+    Header = $Header_NTNX_Creds
+} 
+$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck) 
+$task_id=($response.value.Replace(".return","task_id")|ConvertFrom-JSON).task_id
+
+# Wait till the LCM inventory job has ran using the task_id we got earlier
+$APIParams = @{
+        method="GET"
+        Uri="https://"+$PC_IP+":9440/api/nutanix/v3/tasks/"+$task_id
+        ContentType="application/json"
+        Header = $Header_NTNX_Creds
+} 
+$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).status
+echo $response
+$counter=1
+While ($response -NotMatch "SUCCEEDED"){
+    write-output "Waiting for LCM inventroy to have completed ($counter/45 mins)."
+    sleep 60
+    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).status
+    if ($counter -eq 45){
+        write-out "We have waited for 45 minutes and the LCM did not finish."
+        write-out "Please use the PC UI to update the environment."
+        Break
+    }
+    $counter++
+}
+if ($countert -eq 45){
+    write-output "LCM update has failed"
+}else{
+    write-output "Progressing on the update.."
+
+}
 
 
 # **********************************************************************************
