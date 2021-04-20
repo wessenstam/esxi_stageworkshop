@@ -809,8 +809,33 @@ $APIParams = @{
     Header = $Header_NTNX_Creds
 } 
 $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+$taskuuid=$response.task_uuid
 
-sleep 10
+# Wait loop for the TaskUUID to check if done
+$APIParams = @{
+    method="GET"
+    Uri="https://"+$PC_IP+":9440/api/nutanix/v3/tasks/"+$taskuuid
+    ContentType="application/json"
+    Header = $Header_NTNX_Creds
+} 
+$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).status
+# Loop for 10 minutes so we can check the task being run successfuly
+$counter=1
+while ($response -NotMatch "SUCCEEDED"){
+    write-output "Objects Enabling still running ($counter/45 mins)...Retrying in 1 minute."
+    sleep 60
+    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).status
+    if ($counter -eq 10){
+        break
+    }
+    $counter ++
+}
+if ($counter -eq 10){
+    Write-Output "Waited 10 minutes and Objects didn't finish the enabling! Please check the PC UI for the reason."
+}else{
+    Write-Output "Enabling has been successful. Progressing..."
+}
+
 # Check if the Objects have been enabled
 $APIParams = @{
     method="POST"
@@ -948,6 +973,42 @@ if ($counter -eq 12){
 Write-Output "--------------------------------------"
 
 # **********************************************************************************
+# Enable File Server manager
+# **********************************************************************************
+
+$APIParams = @{
+    method="POST"
+    Body='{"state":"ENABLE"}'
+    Uri="https://"+$PC_IP+":9440/api/nutanix/v3/services/files_manager"
+    ContentType="application/json"
+    Header = $Header_NTNX_Creds
+} 
+$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).task_uuid
+# We have been given a task uuid, so need to check if SUCCEEDED as status
+$APIParams = @{
+    method="GET"
+    Uri="https://"+$PC_IP+":9440/api/nutanix/v3/tasks/"+$response
+    ContentType="application/json"
+    Header = $Header_NTNX_Creds
+} 
+$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).status
+# Loop for 2 minutes so we can check the task being run successfuly
+if ($response -NotMatch "SUCCEEDED"){
+    $counter=1
+    while ($response -NotMatch "SUCCEEDED"){
+        sleep 10
+        $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).status
+        if ($counter -eq 12){
+            Write-Output "Waited two minutes and the Files Server Manager didn't get enabled! Please check the PC UI for the reason."
+        }else{
+            Write-Output "Files Server Manager has been enabled"
+        }
+    }
+}else{
+    Write-Output "Files Server Manager has been enabled"
+}
+
+# **********************************************************************************
 # Run LCM
 # **********************************************************************************
 # RUN Inventory
@@ -1008,11 +1069,11 @@ foreach ($uuid in $uuids){
     try{
         [array]$version = (($response.data.entities | where {$_.uuid -eq $uuids[$count]}).available_version_list.version | sort-object)
         $software=($response.data.entities | where {$_.uuid -eq $uuids[$count]}).entity_model
-        if ($software -NotMatch "pc" -Or $software -NotMatch "NCC"){ # Remove PC and NCC from the upgrade list
+        if ($software -NotMatch "PC" -And $software -NotMatch "NCC"){ # Remove PC and NCC from the upgrade list
             [array]$updates += $software+","+$uuid+","+$version[-1]
         }
     }catch{
-        echo "empty UUID" |Out-Null
+        Write-Output "No update for $software"
     }
     $count ++
 }
@@ -1025,9 +1086,6 @@ foreach ($update in $updates){
 }
 $json_payload_lcm = $json_payload_lcm.subString(0,$json_payload_lcm.length-1) +']'
 
-echo $json_payload_lcm
-exit 0
-
 # Can we update?
 $APIParams = @{
     method="POST"
@@ -1039,9 +1097,9 @@ $APIParams = @{
 $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
 
 if ($response.data.upgrade_plan.to_version.length -lt 1){
-    echo "LCM can not be run as there is nothing to upgrade.."
+    Write-Output "LCM can not be run as there is nothing to upgrade.."
 }else{
-    echo "Firing the upgrade to the LCM platform"
+    Write-Output "Firing the upgrade to the LCM platform"
     $json_payload_lcm_upgrade='{"entity_update_spec_list":'+$json_payload_lcm+'}'
     $APIParams = @{
         method="POST"
@@ -1081,9 +1139,184 @@ if ($response.data.upgrade_plan.to_version.length -lt 1){
     }
 }
 
+
+
 # **********************************************************************************
 # Add VMware as a provider for Calm
 # **********************************************************************************
+
+# Add VMware as the provider
+$Payload=@"
+{
+    "api_version":"3.0",
+    "metadata":{
+        "kind":"account"
+    },
+    "spec":{
+        "name":"VMware",
+        "resources":{
+            "type":"vmware",
+            "data":{
+                "server":"$VCENTER",
+                "username":"administrator@vsphere.local",
+                "password":{
+                    "value":"$password",
+                    "attrs":{
+                        "is_secret_modified":true
+                    }
+                },
+                "port":"443",
+                "datacenter":"Datacenter1"
+            },
+        "sync_interval_secs":1200
+        }
+    }
+}
+
+"@
+$APIParams = @{
+    method="POST"
+    Body=$Payload
+    Uri="https://"+$PC_IP+":9440/api/nutanix/v3/accounts"
+    ContentType="application/json"
+    Header = $Header_NTNX_Creds
+} 
+$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+# Get the admin uuid from the response
+$admin_uuid=$response.metadata.uuid
+
+# Verify the VMware provider
+$APIParams = @{
+    method="GET"
+    Uri="https://"+$PC_IP+":9440/api/nutanix/v3/accounts/"+$admin_uuid+"/verify"
+    ContentType="application/json"
+    Header = $Header_NTNX_Creds
+} 
+$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+
+if ($response -Match "verified"){
+    write-output "The VMware environment has been added as a provider.."
+}else{
+    write-output "The VMware environment has not been added as a provider.."
+    exit 4
+}
+
+# Get the UUID of the default project
+$Payload=@"
+{
+    "entity_type":"project",
+    "group_member_attributes":[
+        {"attribute":"name"},
+        {"attribute":"uuid"}
+    ],
+    "filter_criteria":"name==default",
+    "group_member_offset":0,
+    "group_member_count":1000
+}
+"@
+$APIParams = @{
+    method="POST"
+    Body=$Payload
+    Uri="https://"+$PC_IP+":9440/api/nutanix/v3/groups"
+    ContentType="application/json"
+    Header = $Header_NTNX_Creds
+} 
+$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+$proj_uuid=$response.group_results.entity_results.entity_id
+
+# Get the Spec version of the Project
+$APIParams = @{
+    method="GET"
+    Uri="https://"+$PC_IP+":9440/api/nutanix/v3/projects_internal/"+$proj_uuid
+    ContentType="application/json"
+    Header = $Header_NTNX_Creds
+} 
+$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+$spec_version=$response.metadata.spec_version
+
+# Add the Vmware provider to the default Project
+$Payload=@"
+{
+    "spec":{
+        "access_control_policy_list":[],
+        "project_detail":{
+            "name":"default",
+            "resources":{
+                "account_reference_list":[
+                    {
+                        "kind":"account",
+                        "uuid":"$admin_uuid"
+                    }
+                ],
+                "environment_reference_list":[],
+                "user_reference_list":[
+                    {
+                        "kind":"user",
+                        "name":"admin",
+                        "uuid":"00000000-0000-0000-0000-000000000000"
+                    }
+                ],
+                "tunnel_reference_list":[],
+                "external_user_group_reference_list":[],
+                "subnet_reference_list":[],
+                "external_network_list":[]
+            }
+        },
+        "user_list":[],
+        "user_group_list":[]
+    },
+    "api_version":"3.1",
+    "metadata":{
+        "categories_mapping":{},
+        "spec_version":$spec_version,
+        "kind":"project",
+        "uuid":"$proj_uuid",
+        "categories":{},
+        "owner_reference":{
+            "kind":"user",
+            "name":"admin",
+            "uuid":"00000000-0000-0000-0000-000000000000"
+        }
+    }
+}
+"@
+
+$APIParams = @{
+    method="PUT"
+    Body=$Payload
+    Uri="https://"+$PC_IP+":9440/api/nutanix/v3/calm_projects/"+$proj_uuid
+    ContentType="application/json"
+    Header = $Header_NTNX_Creds
+} 
+$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+$taskuuid=$response.status.execution_context.task_uuid
+
+# Wait loop for the TaskUUID to check if done
+$APIParams = @{
+    method="GET"
+    Uri="https://"+$PC_IP+":9440/api/nutanix/v3/tasks/"+$taskuuid
+    ContentType="application/json"
+    Header = $Header_NTNX_Creds
+} 
+$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).status
+
+# Loop for 2 minutes so we can check the task being run successfuly
+$counter=1
+while ($response -NotMatch "SUCCEEDED"){
+    write-output "Calm project not yet updated ($counter/12)...Retrying in 10 seconds."
+    sleep 10
+    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).status
+    if ($counter -eq 12){
+        break
+    }
+    $counter ++
+}
+if ($counter -eq 12){
+    Write-Output "Waited 2 minutes and the Calm Project didn't updated! Please check the PC UI for the reason."
+}else{
+    Write-Output "Calm project updated succesfully!"
+}
+
 
 
 # **********************************************************************************
