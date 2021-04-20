@@ -80,6 +80,9 @@ The script will do the following:
    2. Enable DRS and disable Admission Control
    3. Upload ISO Images and OVA Templates in a newly created Content Library
    4. Deploy AutoAD for DNS and Authentication
+
+      > During this step, in rare cases, the AutoAD is not starting due to Powershell. It needs to have a user interact with the script. If the script is stuck for 45 minutes it will stop. To make sure the script progresses, check the logs (in the console). After approx 15 minutes the script should progress to the next steps. If not, please open the UI of the AutoAD VM and interact with the VM. After that the script will pick up the AutoAD progress and move forward.
+
    5. Deploy CentOS 7 VM and turns it into a Template so it can be used with Calm
    6. Deploy the WindowsTools VM
 

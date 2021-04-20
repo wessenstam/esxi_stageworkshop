@@ -6,7 +6,7 @@ Set-PowerCLIConfiguration -Scope User -ParticipateInCEIP:$false -confirm:$false 
 # **********************************************************************************
 # Setting the needed variables
 # **********************************************************************************
-$parameters=get-content "/script/environment.env"
+$parameters=get-content "./environment.env"
 $password=$parameters.Split(",")[0]
 $PE_IP=$parameters.Split(",")[1]
 
@@ -338,10 +338,10 @@ while ($true){
         $response=invoke-Webrequest -Uri $url -TimeOut 15
         Break
     }catch{
-        Write-Output "AutoAD still not ready. Sleeping 60 seconds before retrying...($counter/20)"
+        Write-Output "AutoAD still not ready. Sleeping 60 seconds before retrying...($counter/45)"
         sleep 60
-        if ($counter -eq 20){
-            Write-Output "We waited for 20 minutes and the AutoAD didn't got ready in time..."
+        if ($counter -eq 45){
+            Write-Output "We waited for 45 minutes and the AutoAD didn't got ready in time... Exiting script.."
             exit 1
         }
         $counter++
@@ -832,6 +832,7 @@ while ($response -lt 1){
         break
     }
     $counter++
+    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).total_group_count
 }
 if ($counter -eq 30){
     Write-Output "Objects has not been enabled. Please use the UI.."
@@ -1007,7 +1008,7 @@ foreach ($uuid in $uuids){
     try{
         [array]$version = (($response.data.entities | where {$_.uuid -eq $uuids[$count]}).available_version_list.version | sort-object)
         $software=($response.data.entities | where {$_.uuid -eq $uuids[$count]}).entity_model
-        if ($software -NotMatch "pc" or $software -NotMatch "NCC"){ # Remove PC and NCC from the upgrade list
+        if ($software -NotMatch "pc" -Or $software -NotMatch "NCC"){ # Remove PC and NCC from the upgrade list
             [array]$updates += $software+","+$uuid+","+$version[-1]
         }
     }catch{
