@@ -630,7 +630,7 @@ if ($counter -eq 20){
     $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).status
 
     # Loop for 20 minutes so we can check the task being run successfuly
-    $counter=0
+    $counter=1
     while ($response -NotMatch "SUCCEEDED"){
         write-output "File Server Deployment is still running ($counter/20 mins)...Retrying in 1 minute."
         sleep 60
@@ -710,7 +710,7 @@ $Payload=@"
 # Deploy the File Analytics solution
 $APIParams = @{
     method="POST"
-    Uri="https://"+$PE_IP+":9440/PrismGateway/services/rest/v1/containers/datastores/add_datastore"
+    Uri="https://"+$PE_IP+":9440/PrismGateway/services/rest/v2.0/analyticsplatform"
     ContentType="application/json"
     Body=$Payload
     Header = $Header_NTNX_Creds
@@ -721,16 +721,16 @@ $taskuuid=$response.task_uuid
 # Wait loop for the TaskUUID to check if done
 $APIParams = @{
     method="GET"
-    Uri="https://"+$PC_IP+":9440/api/nutanix/v3/tasks/"+$taskuuid
+    Uri="https://"+$PE_IP+":9440/api/nutanix/v3/tasks/"+$taskuuid
     ContentType="application/json"
     Header = $Header_NTNX_Creds
 } 
 $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).status
 
 # Loop for 20 minutes so we can check the task being run successfuly
-$counter=0
+$counter=1
 while ($response -NotMatch "SUCCEEDED"){
-    write-output "File Server Deployment is still running ($counter/20 mins)...Retrying in 1 minute."
+    write-output "File Analytics deployment is still running ($counter/20 mins)...Retrying in 1 minute."
     sleep 60
     $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).status
     if ($counter -eq 20){
@@ -741,7 +741,7 @@ while ($response -NotMatch "SUCCEEDED"){
 if ($counter -eq 20){
     Write-Output "Waited 20 minutes and the File Analytics deployment didn't finish in time!"
 }else{
-    Write-Output "File analytics deployment has been successful. Progressing..."
+    Write-Output "File Analytics deployment has been successful. Progressing..."
 }
 Write-Output "--------------------------------------"
 <#
