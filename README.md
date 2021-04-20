@@ -37,6 +37,8 @@ If the machine is Mac or Linux, it is still possible to install PowerShell. Plea
 1. Linux: https://docs.microsoft.com/en-us/powershell/scripting/install/installing-powershell-core-on-linux?view=powershell-7.1
 2. MacOS: https://docs.microsoft.com/en-us/powershell/scripting/install/installing-powershell-core-on-macos?view=powershell-7.1
 
+For Linux and MacOS, preferred way is using the container version of the PowerCLI. Reason is that during the building of the script, strange behaviours have been seen where intermittent errors where shown when running the script. A RC has so far not been found...
+
 ### Native installation of PowerCLI
 Independent of your O/S and running Native PowerShell, you have to follow this article to get the VMware POwerCLI installed https://developer.vmware.com/powercli/installation-guide. 
 
@@ -49,7 +51,9 @@ For this type of running the script, Docker has to be installed on your machine.
 - vmware/powerclicore; the name of the container image that is going to be run. It will be downloaded automatically if it doesn't exist on the machine.
 - /script/stage_esxi.ps1; the name of the script including the location **INSIDE** the container. As we have mounted, using the **-v** parameter, the location on the machine that holds the script file to /script in the container, the container needs to be told the absolute full path.
 
-If you want to know more on the container, please read this https://github.com/vmware/powerclicore
+> If you want to know more on the container, please read this https://github.com/vmware/powerclicore. 
+
+> An extra Module has been added to the container. The Module is called Posh-SSH (https://github.com/darkoperator/Posh-SSH). This makes it possible to use SSH with username and password to manipulate Linux based machines. The script is using it to manipulate the Era instanace for setting its static IP Address. Besides the extra Module the example scripts have been removed from the container. How the container is build, please consult the Dockerfile in the root of the Repo.
 ## Usage
 Follow these steps to get the staging running:
 

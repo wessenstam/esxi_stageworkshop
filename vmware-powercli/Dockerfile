@@ -24,17 +24,10 @@ RUN echo "/usr/bin/pwsh" >> /etc/shells && \
     pwsh -c "\$ProgressPreference = \"SilentlyContinue\"; Install-Module VMware.vSphere.SsoAdmin" && \
     pwsh -c "\$ProgressPreference = \"SilentlyContinue\"; Install-Module PowerNSX -RequiredVersion 3.0.1174" && \
     pwsh -c "\$ProgressPreference = \"SilentlyContinue\"; Install-Module PowervRA -RequiredVersion 3.6.0" && \
-    curl -o ./PowerCLI-Example-Scripts.zip -J -L https://github.com/vmware/PowerCLI-Example-Scripts/archive/03272c1d2db26a525b31c930e3bf3d20d34468e0.zip && \
-    unzip PowerCLI-Example-Scripts.zip && \
-    rm -f PowerCLI-Example-Scripts.zip && \
-    mv ./PowerCLI-Example-Scripts-* ./PowerCLI-Example-Scripts && \
-    mv ./PowerCLI-Example-Scripts/Modules/* /usr/lib/powershell/Modules/ && \
+    pwsh -c "\$ProgressPreference = \"SilentlyContinue\"; Install-Module Posh-SSH" && \
     find / -name "net45" | xargs rm -rf && \
     echo '$ProgressPreference = "SilentlyContinue"' > /root/.config/powershell/Microsoft.PowerShell_profile.ps1 && \
     tdnf erase -y unzip && \
     tdnf clean all
-
-
-
 
 CMD ["/bin/pwsh"]

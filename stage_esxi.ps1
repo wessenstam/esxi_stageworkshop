@@ -6,7 +6,7 @@ Set-PowerCLIConfiguration -Scope User -ParticipateInCEIP:$false -confirm:$false 
 # **********************************************************************************
 # Setting the needed variables
 # **********************************************************************************
-$parameters=get-content "./environment.env"
+$parameters=get-content "/script/environment.env"
 $password=$parameters.Split(",")[0]
 $PE_IP=$parameters.Split(",")[1]
 
@@ -45,6 +45,7 @@ $Header_NTNX_PC_temp_creds=@{"Authorization" = "Basic "+[System.Convert]::ToBase
 Write-Output "*************************************************"
 Write-Output "Concentrating on Nutanix PE environment.."
 Write-Output "*************************************************"
+
 
 # **********************************************************************************
 # PE Part of the script
@@ -948,6 +949,7 @@ Write-Output "--------------------------------------"
 # **********************************************************************************
 # Run LCM
 # **********************************************************************************
+# RUN Inventory
 $Payload='{"value":"{\".oid\":\"LifeCycleManager\",\".method\":\"lcm_framework_rpc\",\".kwargs\":{\"method_class\":\"LcmFramework\",\"method\":\"perform_inventory\",\"args\":[\"http://download.nutanix.com/lcm/2.0\"]}}"}'
 $APIParams = @{
     method="POST"
@@ -967,7 +969,7 @@ $APIParams = @{
         Header = $Header_NTNX_Creds
 } 
 $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).status
-echo $response
+
 $counter=1
 While ($response -NotMatch "SUCCEEDED"){
     write-output "Waiting for LCM inventroy to have completed ($counter/45 mins)."
@@ -981,12 +983,102 @@ While ($response -NotMatch "SUCCEEDED"){
     $counter++
 }
 if ($countert -eq 45){
-    write-output "LCM update has failed"
+    write-output "LCM inventory has failed"
 }else{
-    write-output "Progressing on the update.."
-
+    write-output "LCM Inventory has run successful. Progressing..."
 }
 
+
+# What can we update?
+$APIParams = @{
+    method="POST"
+    Body='{}'
+    Uri="https://"+$PC_IP+":9440/lcm/v1.r0.b1/resources/entities/list"
+    ContentType="application/json"
+    Header = $Header_NTNX_Creds
+} 
+$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+
+[array]$uuids=$response.data.entities.uuid
+[array]$versions=""
+[array]$updates=""
+$count=0
+foreach ($uuid in $uuids){
+    try{
+        [array]$version = (($response.data.entities | where {$_.uuid -eq $uuids[$count]}).available_version_list.version | sort-object)
+        $software=($response.data.entities | where {$_.uuid -eq $uuids[$count]}).entity_model
+        if ($software -NotMatch "pc" or $software -NotMatch "NCC"){ # Remove PC and NCC from the upgrade list
+            [array]$updates += $software+","+$uuid+","+$version[-1]
+        }
+    }catch{
+        echo "empty UUID" |Out-Null
+    }
+    $count ++
+}
+# Build the JSON Payload
+$json_payload_lcm='['
+foreach ($update in $updates){
+    if($update.split(",")[1] -ne $null) {
+        $json_payload_lcm +='{"version":"'+$update.Split(",")[2]+'","entity_uuid":"'+$update.Split(",")[1]+'"},'
+    }
+}
+$json_payload_lcm = $json_payload_lcm.subString(0,$json_payload_lcm.length-1) +']'
+
+echo $json_payload_lcm
+exit 0
+
+# Can we update?
+$APIParams = @{
+    method="POST"
+    Body=$json_payload_lcm
+    Uri="https://"+$PC_IP+":9440/lcm/v1.r0.b1/resources/notifications"
+    ContentType="application/json"
+    Header = $Header_NTNX_Creds
+} 
+$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+
+if ($response.data.upgrade_plan.to_version.length -lt 1){
+    echo "LCM can not be run as there is nothing to upgrade.."
+}else{
+    echo "Firing the upgrade to the LCM platform"
+    $json_payload_lcm_upgrade='{"entity_update_spec_list":'+$json_payload_lcm+'}'
+    $APIParams = @{
+        method="POST"
+        Body=$json_payload_lcm_upgrade
+        Uri="https://"+$PC_IP+":9440/lcm/v1.r0.b1/operations/update"
+    
+        ContentType="application/json"
+        Header = $Header_NTNX_Creds
+    } 
+    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+
+    $taskuuid=$response.data.task_uuid
+
+    # Wait loop for the TaskUUID to check if done
+    $APIParams = @{
+        method="GET"
+        Uri="https://"+$PC_IP+":9440/api/nutanix/v3/tasks/"+$taskuuid
+        ContentType="application/json"
+        Header = $Header_NTNX_Creds
+    } 
+    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).status
+    # Loop for 2 minutes so we can check the task being run successfuly
+    $counter=1
+    while ($response -NotMatch "SUCCEEDED"){
+        write-output "LCM Upgrade still running ($counter/45 mins)...Retrying in 1 minute."
+        sleep 60
+        $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).status
+        if ($counter -eq 45){
+            break
+        }
+        $counter ++
+    }
+    if ($counter -eq 45){
+        Write-Output "Waited 45 minutes and LCM didn't finish the updates! Please check the PC UI for the reason."
+    }else{
+        Write-Output "LCM Ran successfully"
+    }
+}
 
 # **********************************************************************************
 # Add VMware as a provider for Calm
