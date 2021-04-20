@@ -46,7 +46,7 @@ Write-Output "*************************************************"
 Write-Output "Concentrating on Nutanix PE environment.."
 Write-Output "*************************************************"
 
-
+<#
 # **********************************************************************************
 # PE Part of the script
 # **********************************************************************************
@@ -472,7 +472,50 @@ $APIParams = @{
 
 Write-Output "--------------------------------------"
 
+#>
+# Download the needed FS installation stuff
+Write-Output "Preparing the download of the File Server Binaries."
+$APIParams = @{
+    method="GET"
+    Uri="https://"+$PE_IP+":9440/PrismGateway/services/rest/v1/upgrade/afs/softwares"
+    ContentType="application/json"
+    Body=$Payload
+    Header = $Header_NTNX_Creds
+}
+$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
 
+[array]$names=($response.entities.name | sort-object)
+$name_afs=$names[-1]
+$version_afs_need=($response.entities | where-object {$_.name -eq $name_afs}).version
+$md5sum_afs_need=($response.entities | where-object {$_.name -eq $name_afs}).md5sum
+$totalsize_afs_need=($response.entities | where  {$_.name -eq $name_afs}).totalSizeInBytes
+$url_afs_need=($response.entities | where-object {$_.name -eq $name_afs}).url
+$comp_nos_ver_afs_need=($response.entities | where-object {$_.name -eq $name_afs}).compatibleNosVersions | ConvertTo-JSON
+$comp_ver_afs_need=($response.entities | where-object {$_.name -eq $name_afs}).compatibleVersions | ConvertTo-JSON
+$release_afs_need=($response.entities | where-object {$_.name -eq $name_afs}).releaseDate
+$comp_fsvm_afs_need=($response.entities | where-object {$_.name -eq $name_afs}).compatibleFsmVersions | ConvertTo-Json
+
+# Build the Payload
+$Payload=@"
+{
+    "name":"$name_afs",
+    "version":"$version_afs_need",
+    "md5Sum":"$md5sum_afs_need",
+    "totalSizeInBytes":$totalsize_afs_need,
+    "softwareType":"FILE_SERVER",
+    "url":"$url_afs_need",
+    "compatibleNosVersions":$comp_nos_ver_afs_need,
+    "compatibleVersions":$comp_ver_afs_need,
+    "releaseDate":$release_afs_need,
+    "compatibleFsmVersions":$comp_fsvm_afs_need
+}
+"@
+
+echo $Payload
+
+
+Write-Output "--------------------------------------"
+<#
 # Deploy Prism Central
 
 Write-Output "Deploying the Prism Central to the environment"
@@ -1317,7 +1360,7 @@ if ($counter -eq 12){
     Write-Output "Calm project updated succesfully!"
 }
 
-
+#>
 
 # **********************************************************************************
 # Create Projects
