@@ -49,7 +49,7 @@ Write-Output "Concentrating on Nutanix PE environment.."
 Write-Output "*************************************************"
 
 # **********************************************************************************
-# PE Part of the script
+# PE Init Part of the script
 # **********************************************************************************
 
 # Accept the EULA
@@ -481,8 +481,11 @@ $APIParams = @{
 
 Write-Output "--------------------------------------"
 
-
+# **********************************************************************************
+# File server and Analytics
+# **********************************************************************************
 # Download the needed FS installation stuff
+
 Write-Output "Preparing the download of the File Server Binaries."
 $APIParams = @{
     method="GET"
@@ -491,7 +494,12 @@ $APIParams = @{
     Body=$Payload
     Header = $Header_NTNX_Creds
 }
-$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+try{
+    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+}catch{
+    start-sleep 300 # Need some time to get the info in the system. Waiting 5 minutes before moving forward
+    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+}
 
 [array]$names=($response.entities.name | sort-object)
 $name_afs=$names[-1]
@@ -504,6 +512,8 @@ $comp_ver_afs_need=($response.entities | where-object {$_.name -eq $name_afs}).c
 $release_afs_need=($response.entities | where-object {$_.name -eq $name_afs}).releaseDate
 $comp_fsvm_afs_need=($response.entities | where-object {$_.name -eq $name_afs}).compatibleFsmVersions | ConvertTo-Json
 
+echo $name_afs
+exit 0
 # Build the Payload
 $Payload=@"
 {
@@ -752,7 +762,9 @@ if ($counter -eq 20){
 }
 Write-Output "--------------------------------------"
 
+# **********************************************************************************
 # Deploy Prism Central
+# **********************************************************************************
 
 Write-Output "Deploying the Prism Central to the environment"
 
@@ -883,7 +895,7 @@ Write-Output "PE has been registered to PC. Progressing..."
 Write-Output "--------------------------------------"
 
 # **********************************************************************************
-# Start the PC environment manipulations
+# Start the PC environment init manipulations
 # **********************************************************************************
 Write-Output "*************************************************"
 Write-Output "Concentrating on Nutanix PC environment.."
@@ -1024,7 +1036,6 @@ Write-Output "--------------------------------------"
 # Enable Calm
 # **********************************************************************************
 Write-Output "Enabling Calm"
-
 
 # Need to check if the PE to PC registration has been done before we move forward to enable Calm. If we've done that, move on.
 
@@ -1288,7 +1299,7 @@ if ($response -NotMatch "SUCCEEDED"){
 }
 
 # **********************************************************************************
-# Run LCM
+# LCM run inventory and upgrade all, except PC and NCC
 # **********************************************************************************
 # RUN Inventory
 $Payload='{"value":"{\".oid\":\"LifeCycleManager\",\".method\":\"lcm_framework_rpc\",\".kwargs\":{\"method_class\":\"LcmFramework\",\"method\":\"perform_inventory\",\"args\":[\"http://download.nutanix.com/lcm/2.0\"]}}"}'
@@ -1418,7 +1429,102 @@ if ($response.data.upgrade_plan.to_version.length -lt 1){
     }
 }
 
+Write-Output "--------------------------------------"
+<#
+# **********************************************************************************
+# Add an Objects store to the cluster
+# **********************************************************************************
 
+Write-Output "Build an Objects store"
+
+# Get the network UUIDs of the VM Network network
+$Payload=@"
+{
+    "entity_type":"subnet",
+    "group_member_count":40,
+    "group_member_offset":0,
+    "group_member_sort_attribute":"name",
+    "group_member_sort_order":"ASCENDING",
+    "group_member_attributes":[
+        {
+            "attribute":"name"
+        }
+    ]
+}
+"@
+$APIParams = @{
+    method="POST"
+    Body=$Payload
+    Uri="https://"+$PC_IP+":9440/api/nutanix/v3/groups"
+    ContentType="application/json"
+    Header = $Header_NTNX_Creds
+} 
+$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).group_results
+$net_uuid_vm_network=($response.entity_results | where-object {$_.data.values.values -eq "VM Network"}).entity_id
+
+$Payload=@"
+{
+    "entity_type":"cluster",
+    "group_member_sort_attribute":"cluster_name",
+    "group_member_sort_order":"ASCENDING",
+    "group_member_attributes":[
+        {
+            "attribute":"cluster_name"
+        }
+    ]
+}
+"@
+$APIParams = @{
+    method="POST"
+    Body=$Payload
+    Uri="https://"+$PC_IP+":9440/api/nutanix/v3/groups"
+    ContentType="application/json"
+    Header = $Header_NTNX_Creds
+} 
+$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).group_results
+$cluster_uuid=$response.entity_results.entity_id
+
+$Payload=@"
+{
+    "api_version":"3.0",
+    "metadata":{
+        "kind":"objectstore"
+    },
+    "spec":{
+        "name":"ntnx-objects",
+        "description":"NTNXLAB",
+        "resources":{
+            "domain":"ntnxlab.local",
+            "cluster_reference":{
+                "kind":"cluster","uuid":"$cluster_uuid"
+            },
+            "buckets_infra_network_dns":"$ip_subnet.16",
+            "buckets_infra_network_vip":"$ip_subnet.17",
+            "buckets_infra_network_reference":{
+                "kind":"subnet",
+                "uuid":"$net_uuid_vm_network"
+            },
+            "client_access_network_reference":{
+                "kind":"subnet",
+                "uuid":"$net_uuid_vm_network"
+            },
+            "aggregate_resources":{
+                "total_vcpu_count":10,
+                "total_memory_size_mib":32768,
+                "total_capacity_gib":51200
+            },
+            "client_access_network_ipv4_range":{
+                "ipv4_start":"$ip_subnet.18",
+                "ipv4_end":"$ip_subnet.21"
+            }
+        }
+    }
+}
+"@
+echo $Payload
+exit 0
+Write-Output "--------------------------------------"
+#>
 # **********************************************************************************
 # Add VMware as a provider for Calm
 # **********************************************************************************
@@ -1737,12 +1843,6 @@ if ($counter -eq 12){
 
 Write-Output "--------------------------------------"
 
-
-# **********************************************************************************
-# Create PC Admin and role
-# **********************************************************************************
-
-
 # **********************************************************************************
 # Deploy and configure Era
 # **********************************************************************************
@@ -1756,3 +1856,4 @@ $Era_IP
 
 
 Write-Output "--------------------------------------"
+#>
