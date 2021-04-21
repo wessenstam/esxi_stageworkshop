@@ -278,7 +278,7 @@ Write-Output "Uploading needed images"
 # Create a ContentLibray and copy the needed images to it
 
 New-ContentLibrary -Name "deploy" -Datastore "Images" | Out-Null
-$images=@('esxi_ovas/AutoAD_Sysprep.ova','esxi_ovas/WinTools-AHV.ova','esxi_ovas/CentOS7.ova','esxi_ovas/Windows2016.ova','CentOS7.iso','Windows2016.iso')
+$images=@('esxi_ovas/AutoAD_Sysprep.ova','esxi_ovas/WinTools-AHV.ova','esxi_ovas/CentOS.ova','esxi_ovas/Windows2016.ova','CentOS7.iso','Windows2016.iso')
 foreach($image in $images){
     # Making sure we set the correct nameing for the ContentLibaray by removing the leading sublocation on the HTTP server
     if ($image -Match "/"){
@@ -310,10 +310,10 @@ get-vm 'WinTools-VM' | Get-NetworkAdapter | Set-NetworkAdapter -NetworkName 'Sec
 Write-Output "WindowsTools VM has been created"
 Write-Output "--------------------------------------"
 
-Write-Output "Deploying the CentOS7 VM via a Content Library in the Image Datastore and transforming into a Template"
-Get-ContentLibraryitem -name 'CentOS' | new-vm -Name 'CentOS-Templ' -vmhost $ESXi_Host -Datastore "vmContainer1" | Out-Null
-get-vm 'CentOS-Templ' | Get-NetworkAdapter | Set-NetworkAdapter -NetworkName 'Secondary' -Confirm:$false | Out-Null
-Get-VM -Name 'CentOS-Templ' | Set-VM -ToTemplate -Confirm:$false
+Write-Output "Deploying the CentOS VM via a Content Library in the Image Datastore and transforming into a Template"
+Get-ContentLibraryitem -name 'CentOS' | new-vm -Name 'CentOS7-Templ' -vmhost $ESXi_Host -Datastore "vmContainer1" | Out-Null
+get-vm 'CentOS7-Templ' | Get-NetworkAdapter | Set-NetworkAdapter -NetworkName 'Secondary' -Confirm:$false | Out-Null
+Get-VM -Name 'CentOS7-Templ' | Set-VM -ToTemplate -Confirm:$false
 
 Write-Output "A template for CentOS 7 has been created"
 Write-Output "--------------------------------------"
@@ -485,7 +485,7 @@ Write-Output "--------------------------------------"
 # File server and Analytics
 # **********************************************************************************
 # Download the needed FS installation stuff
-
+#Start-Sleep 300
 Write-Output "Preparing the download of the File Server Binaries."
 $APIParams = @{
     method="GET"
@@ -494,15 +494,11 @@ $APIParams = @{
     Body=$Payload
     Header = $Header_NTNX_Creds
 }
-try{
-    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
-}catch{
-    start-sleep 300 # Need some time to get the info in the system. Waiting 5 minutes before moving forward
-    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
-}
+$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
 
 [array]$names=($response.entities.name | sort-object)
 $name_afs=$names[-1]
+echo "AFS version $name_afs"
 $version_afs_need=($response.entities | where-object {$_.name -eq $name_afs}).version
 $md5sum_afs_need=($response.entities | where-object {$_.name -eq $name_afs}).md5sum
 $totalsize_afs_need=($response.entities | where-object  {$_.name -eq $name_afs}).totalSizeInBytes
@@ -512,8 +508,6 @@ $comp_ver_afs_need=($response.entities | where-object {$_.name -eq $name_afs}).c
 $release_afs_need=($response.entities | where-object {$_.name -eq $name_afs}).releaseDate
 $comp_fsvm_afs_need=($response.entities | where-object {$_.name -eq $name_afs}).compatibleFsmVersions | ConvertTo-Json
 
-echo $name_afs
-exit 0
 # Build the Payload
 $Payload=@"
 {
@@ -592,14 +586,14 @@ if ($counter -eq 20){
             "subnetMask":"255.255.255.128",
             "defaultGateway":"$ip_subnet.1",
             "uuid":"$network_uuid_vm_network",
-            "pool":["$ip_subnet.17 $ip_subnet.17"]
+            "pool":["$ip_subnet.15 $ip_subnet.15"]
         },
         "externalNetworks":[
             {
                 "subnetMask":"255.255.255.128",
                 "defaultGateway":"$ip_subnet.129",
                 "uuid":"$network_uuid_secondary",
-                "pool":["$ip_subnet.130 $ip_subnet.130"]
+                "pool":["$ip_subnet.140 $ip_subnet.140"]
             }
         ],
         "windowsAdDomainName":"ntnxlab.local",
@@ -641,7 +635,7 @@ if ($counter -eq 20){
     # Wait loop for the TaskUUID to check if done
     $APIParams = @{
         method="GET"
-        Uri="https://"+$PC_IP+":9440/api/nutanix/v3/tasks/"+$taskuuid
+        Uri="https://"+$PE_IP+":9440/api/nutanix/v3/tasks/"+$taskuuid
         ContentType="application/json"
         Header = $Header_NTNX_Creds
     } 
