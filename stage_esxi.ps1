@@ -257,7 +257,7 @@ connect-viserver $VCENTER -User administrator@vsphere.local -Password $password 
 # Enable DRS on the vCenter
 
 Write-Output "Enabling DRS on the vCenter environment and disabling Admission Control"
-$cluster_name=(get-cluster| select $_.name).Name
+$cluster_name=(get-cluster| select-object $_.name).Name
 Set-Cluster -Cluster $cluster_name -DRSEnabled:$true -HAAdmissionControlEnabled:$false -Confirm:$false | Out-Null
 
 Write-Output "--------------------------------------"
@@ -278,7 +278,7 @@ Write-Output "Uploading needed images"
 # Create a ContentLibray and copy the needed images to it
 
 New-ContentLibrary -Name "deploy" -Datastore "Images" | Out-Null
-$images=@('esxi_ovas/AutoAD_Sysprep.ova','esxi_ovas/WinTools-AHV.ova','esxi_ovas/CentOS7.ova','CentOS7.iso','Windows2016.iso')
+$images=@('esxi_ovas/AutoAD_Sysprep.ova','esxi_ovas/WinTools-AHV.ova','esxi_ovas/CentOS7.ova','esxi_ovas/Windows2016.ova','CentOS7.iso','Windows2016.iso')
 foreach($image in $images){
     # Making sure we set the correct nameing for the ContentLibaray by removing the leading sublocation on the HTTP server
     if ($image -Match "/"){
@@ -318,6 +318,14 @@ Get-VM -Name 'CentOS-Templ' | Set-VM -ToTemplate -Confirm:$false
 Write-Output "A template for CentOS 7 has been created"
 Write-Output "--------------------------------------"
 
+Write-Output "Deploying the Windows 2016 VM via a Content Library in the Image Datastore and transforming into a Template"
+Get-ContentLibraryitem -name 'Windows2016' | new-vm -Name 'Windows2016-Templ' -vmhost $ESXi_Host -Datastore "vmContainer1" | Out-Null
+get-vm 'Windows2016-Templ' | Get-NetworkAdapter | Set-NetworkAdapter -NetworkName 'Secondary' -Confirm:$false | Out-Null
+Get-VM -Name 'Windows2016-Templ' | Set-VM -ToTemplate -Confirm:$false
+
+Write-Output "A template for Windows 2016 has been created"
+Write-Output "--------------------------------------"
+
 
 Write-Output "Creating AutoAD VM via a Content Library in the Image Datastore"
 Get-ContentLibraryitem -name 'AutoAD_Sysprep' | new-vm -Name AutoAD -vmhost $ESXi_Host -Datastore "vmContainer1" | Out-Null
@@ -339,8 +347,8 @@ while ($true){
         $response=invoke-Webrequest -Uri $url -TimeOut 15
         Break
     }catch{
-        Write-Output "AutoAD still not ready. Sleeping 60 seconds before retrying...($counter/45)"
-        sleep 60
+        Write-Output "AutoAD still not ready. Start-Sleeping 60 seconds before retrying...($counter/45)"
+        Start-Sleep 60
         if ($counter -eq 45){
             Write-Output "We waited for 45 minutes and the AutoAD didn't got ready in time... Exiting script.."
             exit 1
@@ -489,7 +497,7 @@ $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
 $name_afs=$names[-1]
 $version_afs_need=($response.entities | where-object {$_.name -eq $name_afs}).version
 $md5sum_afs_need=($response.entities | where-object {$_.name -eq $name_afs}).md5sum
-$totalsize_afs_need=($response.entities | where  {$_.name -eq $name_afs}).totalSizeInBytes
+$totalsize_afs_need=($response.entities | where-object  {$_.name -eq $name_afs}).totalSizeInBytes
 $url_afs_need=($response.entities | where-object {$_.name -eq $name_afs}).url
 $comp_nos_ver_afs_need=($response.entities | where-object {$_.name -eq $name_afs}).compatibleNosVersions | ConvertTo-JSON
 $comp_ver_afs_need=($response.entities | where-object {$_.name -eq $name_afs}).compatibleVersions | ConvertTo-JSON
@@ -536,7 +544,7 @@ $status=$response.status
 $counter=1
 while ($status -ne "COMPLETED"){
     write-output "Software is still being downloaded. Retrying in 1 minute.."
-    sleep 60
+    Start-Sleep 60
     if ($counter -eq 20){
         write-output "We have tried for 20 minutes and still not ready."
         break;
@@ -579,9 +587,9 @@ if ($counter -eq 20){
         "externalNetworks":[
             {
                 "subnetMask":"255.255.255.128",
-                "defaultGateway":"10.55.55.1",
-                "uuid":"$network_uuid_vm_network",
-                "pool":["$ip_subnet.14 $ip_subnet.14"]
+                "defaultGateway":"$ip_subnet.129",
+                "uuid":"$network_uuid_secondary",
+                "pool":["$ip_subnet.130 $ip_subnet.130"]
             }
         ],
         "windowsAdDomainName":"ntnxlab.local",
@@ -633,7 +641,7 @@ if ($counter -eq 20){
     $counter=1
     while ($response -NotMatch "SUCCEEDED"){
         write-output "File Server Deployment is still running ($counter/20 mins)...Retrying in 1 minute."
-        sleep 60
+        Start-Sleep 60
         $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).status
         if ($counter -eq 20){
             break
@@ -730,7 +738,7 @@ $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).status
 $counter=1
 while ($response -NotMatch "SUCCEEDED"){
     write-output "File Analytics deployment is still running ($counter/20 mins)...Retrying in 1 minute."
-    sleep 60
+    Start-Sleep 60
     $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).status
     if ($counter -eq 20){
         break
@@ -743,7 +751,7 @@ if ($counter -eq 20){
     Write-Output "File Analytics deployment has been successful. Progressing..."
 }
 Write-Output "--------------------------------------"
-<#
+
 # Deploy Prism Central
 
 Write-Output "Deploying the Prism Central to the environment"
@@ -837,8 +845,8 @@ while ($true){
         $response=invoke-Webrequest -Uri $url -TimeOut 15 -SkipCertificateCheck -Credential $cred
         Break
     }catch{
-        Write-Output "PC still not ready. Sleeping 60 seconds before retrying...($counter/45)"
-        sleep 60
+        Write-Output "PC still not ready. Start-Sleeping 60 seconds before retrying...($counter/45)"
+        Start-Sleep 60
         if ($counter -eq 45){
             Write-Output "We waited for 45 minutes and the AutoAD didn't got ready in time..."
             exit 1
@@ -864,7 +872,7 @@ $count=1
 while ($response.clusterDetails.ipAddresses -eq $null){
     Write-Output "PE is not yet registered to PC. Waiting a bit more.."
     $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
-    sleep 60
+    Start-Sleep 60
     if ($count -gt 10){
         Write-Output "Waited for 10 minutes. Giving up. Exiting the script."
         exit 3
@@ -1061,7 +1069,7 @@ $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).service_enablemen
 while ($response -NotMatch "ENABLED"){
     $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).service_enablement_status
 }
-sleep 60
+Start-Sleep 60
 Write-Output "Calm has been enabled"
 Write-Output "--------------------------------------"
 
@@ -1094,7 +1102,7 @@ $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).status
 $counter=1
 while ($response -NotMatch "SUCCEEDED"){
     write-output "Objects Enabling still running ($counter/45 mins)...Retrying in 1 minute."
-    sleep 60
+    Start-Sleep 60
     $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).status
     if ($counter -eq 10){
         break
@@ -1122,7 +1130,7 @@ $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).total_group_count
 $counter=1
 while ($response -lt 1){
     Write-Output "Objects not yet ready to be used. Waiting 10 seconds before retry ($counter/30)"
-    sleep 10
+    Start-Sleep 10
     if ($counter -eq 30){
         Write-Output "We waited for five minutes and Objects didn't become enabled."
         break
@@ -1173,7 +1181,7 @@ if ($response -eq $true){
     if ($response -NotMatch "SUCCEEDED"){
         $counter=1
         while ($response -NotMatch "SUCCEEDED"){
-            sleep 10
+            Start-Sleep 10
             $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).status
             if ($counter -eq 12){
                 Write-Output "Waited two minutes and Leap didn't get enabled! Please check the PC UI for the reason."
@@ -1212,7 +1220,7 @@ if ($response.value -Match "true"){
 }else{
     Write-Output "Retrying enablening Karbon one more time"
     $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
-    sleep 10
+    Start-Sleep 10
 }
 
 # Checking if Karbon has been enabled
@@ -1228,7 +1236,7 @@ $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
 $counter=1
 while ($response.value -NotMatch "true"){
     Write-Output "Karbon is not ready"
-    sleep 10
+    Start-Sleep 10
     if ($counter -eq 12){
         Write-Output "We tried for 2 minutes and Karbon is still not enabled."
         break
@@ -1267,7 +1275,7 @@ $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).status
 if ($response -NotMatch "SUCCEEDED"){
     $counter=1
     while ($response -NotMatch "SUCCEEDED"){
-        sleep 10
+        Start-Sleep 10
         $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).status
         if ($counter -eq 12){
             Write-Output "Waited two minutes and the Files Server Manager didn't get enabled! Please check the PC UI for the reason."
@@ -1306,7 +1314,7 @@ $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).status
 $counter=1
 While ($response -NotMatch "SUCCEEDED"){
     write-output "Waiting for LCM inventroy to have completed ($counter/45 mins)."
-    sleep 60
+    Start-Sleep 60
     $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).status
     if ($counter -eq 45){
         write-out "We have waited for 45 minutes and the LCM did not finish."
@@ -1338,8 +1346,8 @@ $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
 $count=0
 foreach ($uuid in $uuids){
     try{
-        [array]$version = (($response.data.entities | where {$_.uuid -eq $uuids[$count]}).available_version_list.version | sort-object)
-        $software=($response.data.entities | where {$_.uuid -eq $uuids[$count]}).entity_model
+        [array]$version = (($response.data.entities | where-object {$_.uuid -eq $uuids[$count]}).available_version_list.version | sort-object)
+        $software=($response.data.entities | where-object {$_.uuid -eq $uuids[$count]}).entity_model
         if ($software -NotMatch "PC" -And $software -NotMatch "NCC"){ # Remove PC and NCC from the upgrade list
             [array]$updates += $software+","+$uuid+","+$version[-1]
         }
@@ -1396,7 +1404,7 @@ if ($response.data.upgrade_plan.to_version.length -lt 1){
     $counter=1
     while ($response -NotMatch "SUCCEEDED"){
         write-output "LCM Upgrade still running ($counter/45 mins)...Retrying in 1 minute."
-        sleep 60
+        Start-Sleep 60
         $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).status
         if ($counter -eq 45){
             break
@@ -1502,8 +1510,8 @@ $APIParams = @{
     Header = $Header_NTNX_Creds
 } 
 $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).group_results
-$net_uuid_vm_network=($response.entity_results | where {$_.data.values.values -eq "VM Network"}).entity_id
-$net_uuid_secondary=($response.entity_results | where {$_.data.values.values -eq "Secondary"}).entity_id
+$net_uuid_vm_network=($response.entity_results | where-object {$_.data.values.values -eq "VM Network"}).entity_id
+$net_uuid_secondary=($response.entity_results | where-object {$_.data.values.values -eq "Secondary"}).entity_id
 
 # Get the Nutanix PC account UUID
 
@@ -1582,7 +1590,7 @@ $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).status
 $counter=1
 while ($response -NotMatch "SUCCEEDED"){
     write-output "Calm project not yet created ($counter/30)...Retrying in 10 seconds."
-    start-sleep 10
+    start-Start-Sleep 10
     $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).status
     if ($counter -eq 30){
         break
@@ -1714,7 +1722,7 @@ $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).status
 $counter=1
 while ($response -NotMatch "SUCCEEDED"){
     write-output "Calm project not yet updated ($counter/12)...Retrying in 10 seconds."
-    sleep 10
+    Start-Sleep 10
     $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).status
     if ($counter -eq 12){
         break
@@ -1738,3 +1746,13 @@ Write-Output "--------------------------------------"
 # **********************************************************************************
 # Deploy and configure Era
 # **********************************************************************************
+Write-Output "Deploying Era to the environment"
+$Era_IP
+
+
+
+
+
+
+
+Write-Output "--------------------------------------"
