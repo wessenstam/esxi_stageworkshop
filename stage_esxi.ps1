@@ -37,6 +37,7 @@ switch ($PE_IP.Split(".")[1]){
 $Header_NTNX_Creds=@{"Authorization" = "Basic "+[System.Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes("admin:"+$password));}
 $Header_NTNX_PC_temp_creds=@{"Authorization" = "Basic "+[System.Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes("admin:Nutanix/4u"));}
 
+
 # **********************************************************************************
 # ************************* Start of the script ************************************
 # **********************************************************************************
@@ -47,7 +48,6 @@ Write-Output "*************************************************"
 Write-Output "Concentrating on Nutanix PE environment.."
 Write-Output "*************************************************"
 
-<#
 # **********************************************************************************
 # PE Part of the script
 # **********************************************************************************
@@ -278,7 +278,7 @@ Write-Output "Uploading needed images"
 # Create a ContentLibray and copy the needed images to it
 
 New-ContentLibrary -Name "deploy" -Datastore "Images" | Out-Null
-$images=@('esxi_ovas/AutoAD_Sysprep.ova','esxi_ovas/WinTools-AHV.ova','esxi_ovas/CentOS.ova','CentOS7.iso','Windows2016.iso')
+$images=@('esxi_ovas/AutoAD_Sysprep.ova','esxi_ovas/WinTools-AHV.ova','esxi_ovas/CentOS7.ova','CentOS7.iso','Windows2016.iso')
 foreach($image in $images){
     # Making sure we set the correct nameing for the ContentLibaray by removing the leading sublocation on the HTTP server
     if ($image -Match "/"){
@@ -648,7 +648,6 @@ if ($counter -eq 20){
     
 }
 
-#>
 Write-Output "--------------------------------------"
 Write-Output "Deploying File Analytics"
 
@@ -1412,7 +1411,6 @@ if ($response.data.upgrade_plan.to_version.length -lt 1){
 }
 
 
-
 # **********************************************************************************
 # Add VMware as a provider for Calm
 # **********************************************************************************
@@ -1473,6 +1471,135 @@ if ($response -Match "verified"){
     exit 4
 }
 
+Write-Output "--------------------------------------"
+
+
+# **********************************************************************************
+# Add BootCampInfra project to Calm
+# **********************************************************************************
+Write-Output "Creating the BootcampInfra Project"
+
+# Get the network UUIDs of the VM Network and the Secondary network
+$Payload=@"
+{
+    "entity_type":"subnet",
+    "group_member_count":40,
+    "group_member_offset":0,
+    "group_member_sort_attribute":"name",
+    "group_member_sort_order":"ASCENDING",
+    "group_member_attributes":[
+        {
+            "attribute":"name"
+        }
+    ]
+}
+"@
+$APIParams = @{
+    method="POST"
+    Body=$Payload
+    Uri="https://"+$PC_IP+":9440/api/nutanix/v3/groups"
+    ContentType="application/json"
+    Header = $Header_NTNX_Creds
+} 
+$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).group_results
+$net_uuid_vm_network=($response.entity_results | where {$_.data.values.values -eq "VM Network"}).entity_id
+$net_uuid_secondary=($response.entity_results | where {$_.data.values.values -eq "Secondary"}).entity_id
+
+# Get the Nutanix PC account UUID
+
+$APIParams = @{
+    method="POST"
+    Body='{"kind":"account","filter":"type==nutanix_pc"}'
+    Uri="https://"+$PC_IP+":9440/api/nutanix/v3/accounts/list"
+    ContentType="application/json"
+    Header = $Header_NTNX_Creds
+} 
+$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+$nutanix_pc_account_uuid=$response.entities.metadata.uuid
+
+# Creating the Project BootCampInfra
+$Payload=@"
+{
+    "api_version":"3.1.0",
+    "metadata":{
+       "kind":"project"
+    },
+    "spec":{
+       "name":"BootcampInfra",
+       "resources":{
+          "account_reference_list":[
+             {
+                "uuid":"$nutanix_pc_account_uuid",
+                "kind":"account",
+                "name":"nutanix_pc"
+             }
+          ],
+          "subnet_reference_list":[
+             {
+                "kind":"subnet",
+                "name": "Primary",
+                "uuid": "$net_uuid_vm_network"
+            },
+            {
+               "kind":"subnet",
+               "name": "Secondary",
+               "uuid": "$net_uuid_secondary"
+            }
+          ],
+          "user_reference_list":[
+             {
+                "kind":"user",
+                "name":"admin",
+                "uuid":"00000000-0000-0000-0000-000000000000"
+             }
+          ],
+          "environment_reference_list":[]
+       }
+    }
+ }
+"@
+
+$APIParams = @{
+    method="POST"
+    Body=$Payload
+    Uri="https://"+$PC_IP+":9440/api/nutanix/v3/projects"
+    ContentType="application/json"
+    Header = $Header_NTNX_Creds
+} 
+$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+$taskuuid=$response.status.execution_context.task_uuid
+
+# Wait loop for the TaskUUID to check if done
+$APIParams = @{
+    method="GET"
+    Uri="https://"+$PC_IP+":9440/api/nutanix/v3/tasks/"+$taskuuid
+    ContentType="application/json"
+    Header = $Header_NTNX_Creds
+} 
+$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).status
+
+# Loop for 5 minutes so we can check the task being run successfuly
+$counter=1
+while ($response -NotMatch "SUCCEEDED"){
+    write-output "Calm project not yet created ($counter/30)...Retrying in 10 seconds."
+    start-sleep 10
+    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).status
+    if ($counter -eq 30){
+        break
+    }
+    $counter ++
+}
+if ($counter -eq 30){
+    Write-Output "Waited 5 minutes and the Calm Project hasn't been created! Please check the PC UI for the reason."
+}else{
+    Write-Output "Calm project created succesfully!"
+}
+Write-Output "--------------------------------------"
+
+# **********************************************************************************
+# Assigning the VMware environment to the BootCampInfra
+# **********************************************************************************
+
 # Get the UUID of the default project
 $Payload=@"
 {
@@ -1481,7 +1608,7 @@ $Payload=@"
         {"attribute":"name"},
         {"attribute":"uuid"}
     ],
-    "filter_criteria":"name==default",
+    "filter_criteria":"name==BootcampInfra",
     "group_member_offset":0,
     "group_member_count":1000
 }
@@ -1506,13 +1633,24 @@ $APIParams = @{
 $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
 $spec_version=$response.metadata.spec_version
 
-# Add the Vmware provider to the default Project
+# Get the Administrator@vsphere.local uuid
+$APIParams = @{
+    method="POST"
+    Body='{"length":250,"filter":"name==VMware"}'
+    Uri="https://"+$PC_IP+":9440/api/nutanix/v3/accounts/list"
+    ContentType="application/json"
+    Header = $Header_NTNX_Creds
+} 
+$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+$admin_uuid=$response.entities.metadata.uuid
+
+# Add the Vmware provider to the BootcampInfra Project
 $Payload=@"
 {
     "spec":{
         "access_control_policy_list":[],
         "project_detail":{
-            "name":"default",
+            "name":"BootcampInfra",
             "resources":{
                 "account_reference_list":[
                     {
@@ -1584,16 +1722,12 @@ while ($response -NotMatch "SUCCEEDED"){
     $counter ++
 }
 if ($counter -eq 12){
-    Write-Output "Waited 2 minutes and the Calm Project didn't updated! Please check the PC UI for the reason."
+    Write-Output "Waited 2 minutes and the Calm Project didn't update! Please check the PC UI for the reason."
 }else{
     Write-Output "Calm project updated succesfully!"
 }
 
-#>
-
-# **********************************************************************************
-# Create Projects
-# **********************************************************************************
+Write-Output "--------------------------------------"
 
 
 # **********************************************************************************
