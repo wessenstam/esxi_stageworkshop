@@ -1941,8 +1941,8 @@ if ($pre_config_ok -Match "Yes"){
     $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
     $percentage=($response.group_results.entity_results.data | where-object {$_.name -Match "percentage_complete"}).values.values
     $counter=1
-    while ($percentage -lt 10){
-        sleep 60
+    while (($percentage -as [int]) -lt 10){
+        Start-Sleep 60
         write-output "Objects store is at $percentage %. Retrying in 1 minute (1/30)..."
         $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
         $percentage=($response.group_results.entity_results.data | where-object {$_.name -Match "percentage_complete"}).values.values
