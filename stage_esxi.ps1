@@ -43,6 +43,15 @@ switch ($PE_IP.Split(".")[1]){
 $Header_NTNX_Creds=@{"Authorization" = "Basic "+[System.Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes("admin:"+$password));}
 $Header_NTNX_PC_temp_creds=@{"Authorization" = "Basic "+[System.Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes("admin:Nutanix/4u"));}
 
+# Get the name of the cluster and assign to a variable
+$APIParams = @{
+    method="POST"
+    Body='{"kind":"cluster","length":500,"offset":0}'
+    Uri="https://"+$PE_IP+":9440/api/nutanix/v3/clusters/list"
+    ContentType="application/json"
+    Header = $Header_NTNX_Creds
+} 
+$cluster_name=(Invoke-RestMethod @APIParams -SkipCertificateCheck).entities.status.name
 
 # **********************************************************************************
 # ************************* Start of the script ************************************
@@ -51,7 +60,7 @@ $Header_NTNX_PC_temp_creds=@{"Authorization" = "Basic "+[System.Convert]::ToBase
 # Get something on the screen...
 
 Write-Output "*************************************************"
-Write-Output "Concentrating on Nutanix PE environment.."
+Write-Output "Concentrating on Nutanix PE environment ($cluster_name).."
 Write-Output "*************************************************"
 
 # **********************************************************************************
@@ -319,7 +328,7 @@ Write-Output "--------------------------------------"
 Write-Output "Deploying the CentOS VM via a Content Library in the Image Datastore and transforming into a Template"
 Get-ContentLibraryitem -name 'CentOS' | new-vm -Name 'CentOS7-Templ' -vmhost $ESXi_Host -Datastore "vmContainer1" | Out-Null
 get-vm 'CentOS7-Templ' | Get-NetworkAdapter | Set-NetworkAdapter -NetworkName 'Secondary' -Confirm:$false | Out-Null
-Get-VM -Name 'CentOS7-Templ' | Set-VM -ToTemplate -Confirm:$false
+Get-VM -Name 'CentOS7-Templ' | Set-VM -ToTemplate -Confirm:$false | Out-Null
 
 Write-Output "A template for CentOS 7 has been created"
 Write-Output "--------------------------------------"
@@ -327,7 +336,7 @@ Write-Output "--------------------------------------"
 Write-Output "Deploying the Windows 2016 VM via a Content Library in the Image Datastore and transforming into a Template"
 Get-ContentLibraryitem -name 'Windows2016' | new-vm -Name 'Windows2016-Templ' -vmhost $ESXi_Host -Datastore "vmContainer1" | Out-Null
 get-vm 'Windows2016-Templ' | Get-NetworkAdapter | Set-NetworkAdapter -NetworkName 'Secondary' -Confirm:$false | Out-Null
-Get-VM -Name 'Windows2016-Templ' | Set-VM -ToTemplate -Confirm:$false
+Get-VM -Name 'Windows2016-Templ' | Set-VM -ToTemplate -Confirm:$false | Out-Null
 
 Write-Output "A template for Windows 2016 has been created"
 Write-Output "--------------------------------------"
@@ -510,7 +519,7 @@ try{
     [array]$names=($response.entities.name | sort-object)
     $name_afs=$names[-1]
 }
-Write-Ouput "Downloading File Server version $name_afs"
+Write-Output "Downloading File Server version $name_afs"
 $version_afs_need=($response.entities | where-object {$_.name -eq $name_afs}).version
 $md5sum_afs_need=($response.entities | where-object {$_.name -eq $name_afs}).md5sum
 $totalsize_afs_need=($response.entities | where-object  {$_.name -eq $name_afs}).totalSizeInBytes
@@ -559,7 +568,7 @@ write-output "Download of the File Server with version $name_afs has started"
 $status=$response.status
 $counter=1
 while ($status -ne "COMPLETED"){
-    write-output "Software is still being downloaded. Retrying in 1 minute.."
+    write-output "Software is still being downloaded ($counter/20). Retrying in 1 minute.."
     Start-Sleep 60
     if ($counter -eq 20){
         write-output "We have tried for 20 minutes and still not ready."
@@ -598,7 +607,7 @@ if ($counter -eq 20){
             "subnetMask":"255.255.255.128",
             "defaultGateway":"$ip_subnet.1",
             "uuid":"$network_uuid_vm_network",
-            "pool":["$ip_subnet.15 $ip_subnet.15"]
+            "pool":["$ip_subnet.13 $ip_subnet.13"]
         },
         "externalNetworks":[
             {
@@ -714,9 +723,9 @@ $Payload=@"
     "vm_name":"Analytics",
     "network":{
         "uuid":"$network_uuid_vm_network",
-        "ip":"$ip_subnet.13",
+        "ip":"$ip_subnet.14",
         "netmask":"255.255.255.128",
-        "gateway":"10.55.55.1"
+        "gateway":"$ip_subnet.1"
     },
     "resource":{
         "memory":"24",
@@ -968,6 +977,28 @@ if ($response = "True"){
 
 Write-Output "--------------------------------------"
 
+# Add NTP servers
+write-output "Adding NTP Servers"
+foreach ($ntp in (1,2,3)){
+    if ($ntp -ne $null){
+        $APIParams = @{
+            method="POST"
+            Body='[{"hostname":"'+$ntp+'.pool.ntp.org"}]'
+            Uri="https://"+$PC_IP+":9440/PrismGateway/services/rest/v1/cluster/ntp_servers/add_list"
+            ContentType="application/json"
+            Header = $Header_NTNX_Creds
+        } 
+        $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).value
+        if ($response = "True"){
+            Write-Output "NTP Server $ntp.pool.ntp.org added"
+        }else{
+            Write-Output "NTP Server $ntp.pool.ntp.org not added"
+        }
+    }
+}
+
+Write-Output "--------------------------------------"
+
 # Add the AutoAD as the Directory server
 
 $directory_url="ldap://"+$AutoAD+":389"
@@ -1105,32 +1136,6 @@ $APIParams = @{
     Header = $Header_NTNX_Creds
 } 
 $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
-$taskuuid=$response.task_uuid
-
-# Wait loop for the TaskUUID to check if done
-$APIParams = @{
-    method="GET"
-    Uri="https://"+$PC_IP+":9440/api/nutanix/v3/tasks/"+$taskuuid
-    ContentType="application/json"
-    Header = $Header_NTNX_Creds
-} 
-$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).status
-# Loop for 10 minutes so we can check the task being run successfuly
-$counter=1
-while ($response -NotMatch "SUCCEEDED"){
-    write-output "Objects Enabling still running ($counter/45 mins)...Retrying in 1 minute."
-    Start-Sleep 60
-    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).status
-    if ($counter -eq 10){
-        break
-    }
-    $counter ++
-}
-if ($counter -eq 10){
-    Write-Output "Waited 10 minutes and Objects didn't finish the enabling! Please check the PC UI for the reason."
-}else{
-    Write-Output "Enabling has been successful. Progressing..."
-}
 
 # Check if the Objects have been enabled
 $APIParams = @{
@@ -1279,34 +1284,39 @@ $APIParams = @{
     ContentType="application/json"
     Header = $Header_NTNX_Creds
 } 
-$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).task_uuid
-# We have been given a task uuid, so need to check if SUCCEEDED as status
+$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+
+# We have started the enablement of the file server manager, let's wait till it's ready
 $APIParams = @{
     method="GET"
-    Uri="https://"+$PC_IP+":9440/api/nutanix/v3/tasks/"+$response
+    Uri="https://"+$PC_IP+":9440/api/nutanix/v3/services/files_manager/status"
     ContentType="application/json"
     Header = $Header_NTNX_Creds
 } 
-$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).status
+$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).service_enablement_status
 # Loop for 2 minutes so we can check the task being run successfuly
-if ($response -NotMatch "SUCCEEDED"){
+if ($response -NotMatch "ENABLED"){
     $counter=1
-    while ($response -NotMatch "SUCCEEDED"){
+    while ($response -NotMatch "ENABLED"){
         Start-Sleep 10
-        $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).status
+        $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).service_enablement_status
         if ($counter -eq 12){
             Write-Output "Waited two minutes and the Files Server Manager didn't get enabled! Please check the PC UI for the reason."
         }else{
             Write-Output "Files Server Manager has been enabled"
         }
+        $counter++
     }
 }else{
     Write-Output "Files Server Manager has been enabled"
 }
 
+Write-Output "--------------------------------------"
+
 # **********************************************************************************
 # LCM run inventory and upgrade all, except PC and NCC
 # **********************************************************************************
+Write-Output "Running LCM Inventory"
 # RUN Inventory
 $Payload='{"value":"{\".oid\":\"LifeCycleManager\",\".method\":\"lcm_framework_rpc\",\".kwargs\":{\"method_class\":\"LcmFramework\",\"method\":\"perform_inventory\",\"args\":[\"http://download.nutanix.com/lcm/2.0\"]}}"}'
 $APIParams = @{
@@ -1436,101 +1446,7 @@ if ($response.data.upgrade_plan.to_version.length -lt 1){
 }
 
 Write-Output "--------------------------------------"
-<#
-# **********************************************************************************
-# Add an Objects store to the cluster
-# **********************************************************************************
 
-Write-Output "Build an Objects store"
-
-# Get the network UUIDs of the VM Network network
-$Payload=@"
-{
-    "entity_type":"subnet",
-    "group_member_count":40,
-    "group_member_offset":0,
-    "group_member_sort_attribute":"name",
-    "group_member_sort_order":"ASCENDING",
-    "group_member_attributes":[
-        {
-            "attribute":"name"
-        }
-    ]
-}
-"@
-$APIParams = @{
-    method="POST"
-    Body=$Payload
-    Uri="https://"+$PC_IP+":9440/api/nutanix/v3/groups"
-    ContentType="application/json"
-    Header = $Header_NTNX_Creds
-} 
-$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).group_results
-$net_uuid_vm_network=($response.entity_results | where-object {$_.data.values.values -eq "VM Network"}).entity_id
-
-$Payload=@"
-{
-    "entity_type":"cluster",
-    "group_member_sort_attribute":"cluster_name",
-    "group_member_sort_order":"ASCENDING",
-    "group_member_attributes":[
-        {
-            "attribute":"cluster_name"
-        }
-    ]
-}
-"@
-$APIParams = @{
-    method="POST"
-    Body=$Payload
-    Uri="https://"+$PC_IP+":9440/api/nutanix/v3/groups"
-    ContentType="application/json"
-    Header = $Header_NTNX_Creds
-} 
-$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).group_results
-$cluster_uuid=$response.entity_results.entity_id
-
-$Payload=@"
-{
-    "api_version":"3.0",
-    "metadata":{
-        "kind":"objectstore"
-    },
-    "spec":{
-        "name":"ntnx-objects",
-        "description":"NTNXLAB",
-        "resources":{
-            "domain":"ntnxlab.local",
-            "cluster_reference":{
-                "kind":"cluster","uuid":"$cluster_uuid"
-            },
-            "buckets_infra_network_dns":"$ip_subnet.16",
-            "buckets_infra_network_vip":"$ip_subnet.17",
-            "buckets_infra_network_reference":{
-                "kind":"subnet",
-                "uuid":"$net_uuid_vm_network"
-            },
-            "client_access_network_reference":{
-                "kind":"subnet",
-                "uuid":"$net_uuid_vm_network"
-            },
-            "aggregate_resources":{
-                "total_vcpu_count":10,
-                "total_memory_size_mib":32768,
-                "total_capacity_gib":51200
-            },
-            "client_access_network_ipv4_range":{
-                "ipv4_start":"$ip_subnet.18",
-                "ipv4_end":"$ip_subnet.21"
-            }
-        }
-    }
-}
-"@
-echo $Payload
-exit 0
-Write-Output "--------------------------------------"
-#>
 # **********************************************************************************
 # Add VMware as a provider for Calm
 # **********************************************************************************
@@ -1702,7 +1618,7 @@ $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).status
 $counter=1
 while ($response -NotMatch "SUCCEEDED"){
     write-output "Calm project not yet created ($counter/30)...Retrying in 10 seconds."
-    start-Start-Sleep 10
+   Start-Sleep 10
     $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).status
     if ($counter -eq 30){
         break
@@ -1845,6 +1761,207 @@ if ($counter -eq 12){
     Write-Output "Waited 2 minutes and the Calm Project didn't update! Please check the PC UI for the reason."
 }else{
     Write-Output "Calm project updated succesfully!"
+}
+
+Write-Output "--------------------------------------"
+
+
+
+# **********************************************************************************
+# Add an Objects store to the cluster
+# **********************************************************************************
+Write-Output "Build an Objects store"
+
+# Add vCenter to Objects UI including IPAM
+write-output "Adding vCenter to the Objects UI"
+$Payload=@"
+{
+    "api_version":"1.0",
+    "password":"$password",
+    "username":"administrator@vsphere.local",
+    "vcenter_endpoint":"$VCENTER"
+}
+"@
+$APIParams = @{
+    method="POST"
+    Body=$Payload
+    Uri="https://"+$PC_IP+":9440/oss/api/nutanix/v3/platform_client"
+    ContentType="application/json"
+    Header = $Header_NTNX_Creds
+} 
+$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).platform_client_uuid
+if ($response -ne $null){
+    Write-Output "vCenter has been added with UUID $response"
+
+    # Add the IPAM setting to vCenter
+    $Payload=@"
+    {
+        "api_version":"1.0",
+        "esx_datacenter":"Datacenter1",
+        "esx_network":"VM Network",
+        "netmask":"255.255.255.128",
+        "gateway":"$ip_subnet.1",
+        "dns_servers":["$AutoAD"],
+        "ip_ranges":[
+            {
+                "start_ip":"$ip_subnet.16",
+                "end_ip":"$ip_subnet.18"
+            }
+        ]
+    }
+"@
+
+    $APIParams = @{
+        method="POST"
+        Body=$Payload
+        Uri="https://"+$PC_IP+":9440/oss/api/nutanix/v3/platform_client/"+$response+"/ipam"
+        ContentType="application/json"
+        Header = $Header_NTNX_Creds
+    } 
+    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).ipam_uuid
+    if ($response -ne $null){
+        write-output "IPAM settings have been added to the vCenter configuration"
+        $pre_config_ok="Yes"
+    }else{
+        write-output "IPAM settings have not been added to the vCenter configuration. Please use the UI to create the Object Store"
+        $pre_config_ok="No"
+    }
+}else{
+    Write-Output "vCcenter has not been added. Please use the UI to add vCenter to Objects"
+    $pre_config_ok="No"
+}
+
+$pre_config_ok="Yes"
+if ($pre_config_ok -Match "Yes"){
+
+    # Get the Cluster UUID of the PE environment
+    $Payload=@"
+    {
+        "entity_type":"cluster",
+        "group_member_sort_attribute":"cluster_name",
+        "group_member_sort_order":"ASCENDING",
+        "group_member_attributes":[
+            {
+                "attribute":"cluster_name"
+            }
+        ]
+    }
+"@
+    $APIParams = @{
+        method="POST"
+        Body=$Payload
+        Uri="https://"+$PC_IP+":9440/api/nutanix/v3/groups"
+        ContentType="application/json"
+        Header = $Header_NTNX_Creds
+    } 
+    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+    $cluster_uuid=($response.group_results.entity_results | where-object {$_.data.values.values -Match $cluster_name}).entity_id
+
+    # Get the network UUIDs of the VM Network network
+    
+    $APIParams = @{
+        method="GET"
+        Uri="https://"+$PC_IP+":9440/oss/api/nutanix/v3/platform_client/pe_ipams/"+$cluster_uuid
+        ContentType="application/json"
+        Header = $Header_NTNX_Creds
+    } 
+    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+    $net_uuid=$response.pe_ipam_list.ipam_name
+
+    # Build the payload for the Objects Store creation
+
+    $Payload=@"
+    {
+        "api_version":"3.0",
+        "metadata":{
+            "kind":"objectstore"
+        },
+        "spec":{
+            "name":"ntnx-object",
+            "description":"ntnx-object",
+            "resources":{
+                "domain":"ntnxlab.local",
+                "cluster_reference":{
+                    "kind":"cluster","uuid":"$cluster_uuid"
+                },
+                "buckets_infra_network_dns":"",
+                "buckets_infra_network_vip":"",
+                "buckets_infra_network_reference":{
+                    "kind":"subnet",
+                    "uuid":"$net_uuid"
+                },
+                "client_access_network_reference":{
+                    "kind":"subnet","uuid":"$net_uuid"
+                },
+                "aggregate_resources":{
+                    "total_vcpu_count":10,
+                    "total_memory_size_mib":32768,
+                    "total_capacity_gib":5120
+                },
+                "client_access_network_ipv4_range":{
+                    "ipv4_start":"$ip_subnet.19",
+                    "ipv4_end":"$ip_subnet.22"
+                }
+            }
+        }
+    }
+    
+"@
+    $APIParams = @{
+        method="POST"
+        Body=$Payload
+        Uri="https://"+$PC_IP+":9440/oss/api/nutanix/v3/objectstores"
+        ContentType="application/json"
+        Header = $Header_NTNX_Creds
+    } 
+    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+
+    # Let's check if the call succeeded and wait for oit to become available for 30 min
+    $Payload=@"
+    {
+        "entity_type":"objectstore",
+        "group_member_sort_attribute":"name",
+        "group_member_sort_order":"ASCENDING",
+        "group_member_count":20,
+        "group_member_offset":0,
+        "group_member_attributes":[
+            {"attribute":"name"},
+            {"attribute":"state"},
+            {"attribute":"percentage_complete"}
+        ]
+    }
+"@
+    $APIParams = @{
+        method="POST"
+        Body=$Payload
+        Uri="https://"+$PC_IP+":9440/oss/api/nutanix/v3/groups"
+        ContentType="application/json"
+        Header = $Header_NTNX_Creds
+    } 
+    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+    $percentage=($response.group_results.entity_results.data | where-object {$_.name -Match "percentage_complete"}).values.values
+    $counter=1
+    while ($percentage -lt 10){
+        sleep 60
+        write-output "Objects store is at $percentage %. Retrying in 1 minute (1/30)..."
+        $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+        $percentage=($response.group_results.entity_results.data | where-object {$_.name -Match "percentage_complete"}).values.values
+        if ($counter -eq 30){
+            write-output "We have waited 30 minutes and the Objects store has not reached the building process. Please look at the UI if it has become ready later."
+            break
+        }else{
+            $counter++
+        }
+    }
+    if ($counter -lt 30){
+        if (($response.group_results.entity_results.data | where-object {$_.name -Match "state"}).values.values -NotMatch "FAILED"){
+            write-output "The Objects store ntnx-object is still in the creation process, but we are not waiting anymore. Please check the UI for it's progress."
+        }else{
+            write-output "The Objects store ntnx-object has not been created successfully. Please check the UI to see the reason."
+        }
+    }
+}else{
+    write-output "Due to earlier issues, an objects store can not be created. please use the UI to create one."
 }
 
 Write-Output "--------------------------------------"
