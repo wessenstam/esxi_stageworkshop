@@ -6,7 +6,7 @@ Set-PowerCLIConfiguration -Scope User -ParticipateInCEIP:$false -confirm:$false 
 # **********************************************************************************
 # Setting the needed variables
 # **********************************************************************************
-# Are we running from native Powershell or via the PowerCLI container?
+# Are we running from native Powershell or via the PowerCLI docker container
 if (Test-Path -Path ./environment.env -PathType Leaf){
     $parameters=get-content "./environment.env"
 }else{
