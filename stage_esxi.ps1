@@ -485,7 +485,7 @@ Write-Output "--------------------------------------"
 # File server and Analytics
 # **********************************************************************************
 # Download the needed FS installation stuff
-#Start-Sleep 300
+
 Write-Output "Preparing the download of the File Server Binaries."
 $APIParams = @{
     method="GET"
@@ -494,11 +494,17 @@ $APIParams = @{
     Body=$Payload
     Header = $Header_NTNX_Creds
 }
-$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
-
-[array]$names=($response.entities.name | sort-object)
-$name_afs=$names[-1]
-echo "AFS version $name_afs"
+try{
+    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+    [array]$names=($response.entities.name | sort-object)
+    $name_afs=$names[-1]    
+}catch{
+    Start-Sleep 300 # PE needs some time to settle on the upgradeable version before we can grab them... Then retry..
+    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+    [array]$names=($response.entities.name | sort-object)
+    $name_afs=$names[-1]
+}
+Write-Ouput "Downloading File Server version $name_afs"
 $version_afs_need=($response.entities | where-object {$_.name -eq $name_afs}).version
 $md5sum_afs_need=($response.entities | where-object {$_.name -eq $name_afs}).md5sum
 $totalsize_afs_need=($response.entities | where-object  {$_.name -eq $name_afs}).totalSizeInBytes
