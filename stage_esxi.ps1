@@ -6,7 +6,13 @@ Set-PowerCLIConfiguration -Scope User -ParticipateInCEIP:$false -confirm:$false 
 # **********************************************************************************
 # Setting the needed variables
 # **********************************************************************************
-$parameters=get-content "./environment.env"
+# Are we running from native Powershell or via the PowerCLI container?
+if (Test-Path -Path ./environment.env -PathType Leaf){
+    $parameters=get-content "./environment.env"
+}else{
+    $parameters=get-content "/script/environment.env"
+}
+
 $password=$parameters.Split(",")[0]
 $PE_IP=$parameters.Split(",")[1]
 $ip_subnet=$PE_IP.Substring(0,$PE_IP.Length-3)
