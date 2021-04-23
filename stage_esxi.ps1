@@ -288,11 +288,12 @@ ForEach ($vmhost in $vmhosts){
 
 Write-Output "--------------------------------------"
 
-Write-Output "Uploading needed images"
-
 # Create a ContentLibray and copy the needed images to it
 
+Write-Output "Uplading needed images"
+
 New-ContentLibrary -Name "deploy" -Datastore "Images" | Out-Null
+
 $images=@('esxi_ovas/AutoAD_Sysprep.ova','esxi_ovas/WinTools-AHV.ova','esxi_ovas/CentOS.ova','esxi_ovas/Windows2016.ova','CentOS7.iso','Windows2016.iso')
 foreach($image in $images){
     # Making sure we set the correct nameing for the ContentLibaray by removing the leading sublocation on the HTTP server
@@ -308,15 +309,16 @@ foreach($image in $images){
     }else{
         $image_short=$image
     }
+    Write-Output "Uploading $image_name from $nfs_host ..."
     get-ContentLibrary -Name 'deploy' -Local |New-ContentLibraryItem -name $image_short -FileName $image_name -Uri "http://$nfs_host/workshop_staging/$image"| Out-Null
-    Write-Output "Uploaded $image as $image_short in the deploy ContentLibrary"
+    Write-Output "Uploaded $image_name as $image_short in the deploy ContentLibrary"
 }
 
 Write-Output "--------------------------------------"
 
-# Deploy an AutoAD OVA. DRS will take care of the rest.
-
 $ESXi_Host=$vmhosts[0]
+
+# Deploy the Windows Tools VM and create the templates for Centos and Windows
 
 Write-Output "Deploying the WinTools VM via a Content Library in the Image Datastore"
 Get-ContentLibraryitem -name 'WinTools-AHV' | new-vm -Name 'WinTools-VM' -vmhost $ESXi_Host -Datastore "vmContainer1" | Out-Null
@@ -341,6 +343,7 @@ Get-VM -Name 'Windows2016-Templ' | Set-VM -ToTemplate -Confirm:$false | Out-Null
 Write-Output "A template for Windows 2016 has been created"
 Write-Output "--------------------------------------"
 
+# Deploy an AutoAD OVA. DRS will take care of the rest.
 
 Write-Output "Creating AutoAD VM via a Content Library in the Image Datastore"
 Get-ContentLibraryitem -name 'AutoAD_Sysprep' | new-vm -Name AutoAD -vmhost $ESXi_Host -Datastore "vmContainer1" | Out-Null
@@ -872,10 +875,10 @@ while ($true){
         $response=invoke-Webrequest -Uri $url -TimeOut 15 -SkipCertificateCheck -Credential $cred
         Break
     }catch{
-        Write-Output "PC still not ready. Start-Sleeping 60 seconds before retrying...($counter/45)"
+        Write-Output "PC still not ready. Sleeping 60 seconds before retrying...($counter/45)"
         Start-Sleep 60
         if ($counter -eq 45){
-            Write-Output "We waited for 45 minutes and the AutoAD didn't got ready in time..."
+            Write-Output "We waited for 45 minutes and the PC didn't got ready in time..."
             exit 1
         }
         $counter++
@@ -1115,6 +1118,7 @@ $APIParams = @{
 } 
 $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).service_enablement_status
 while ($response -NotMatch "ENABLED"){
+    Start-Sleep 60
     $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).service_enablement_status
 }
 Start-Sleep 60
@@ -1145,7 +1149,12 @@ $APIParams = @{
     ContentType="application/json"
     Header = $Header_NTNX_Creds
 } 
-$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).total_group_count
+try{
+    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).total_group_count
+}catch{
+    sleep 120
+    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).total_group_count
+}
 
 # Run a short waitloop before moving on
 
@@ -1340,7 +1349,7 @@ $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).status
 
 $counter=1
 While ($response -NotMatch "SUCCEEDED"){
-    write-output "Waiting for LCM inventroy to have completed ($counter/45 mins)."
+    write-output "Waiting for LCM inventroy to be completed ($counter/45 mins)."
     Start-Sleep 60
     $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).status
     if ($counter -eq 45){
@@ -1766,7 +1775,6 @@ if ($counter -eq 12){
 Write-Output "--------------------------------------"
 
 
-
 # **********************************************************************************
 # Add an Objects store to the cluster
 # **********************************************************************************
@@ -1792,6 +1800,7 @@ $APIParams = @{
 $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).platform_client_uuid
 if ($response -ne $null){
     Write-Output "vCenter has been added with UUID $response"
+    Start-Sleep 60 # Give the environment some time to settle
 
     # Add the IPAM setting to vCenter
     $Payload=@"
@@ -1804,7 +1813,7 @@ if ($response -ne $null){
         "dns_servers":["$AutoAD"],
         "ip_ranges":[
             {
-                "start_ip":"$ip_subnet.16",
+                "start_ip":"$ip_subnet.15",
                 "end_ip":"$ip_subnet.18"
             }
         ]
@@ -1818,7 +1827,7 @@ if ($response -ne $null){
         ContentType="application/json"
         Header = $Header_NTNX_Creds
     } 
-    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).ipam_uuid
+    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
     if ($response -ne $null){
         write-output "IPAM settings have been added to the vCenter configuration"
         $pre_config_ok="Yes"
@@ -1827,13 +1836,13 @@ if ($response -ne $null){
         $pre_config_ok="No"
     }
 }else{
-    Write-Output "vCcenter has not been added. Please use the UI to add vCenter to Objects"
+    Write-Output "vCenter has not been added. Please use the UI to add vCenter to Objects"
     $pre_config_ok="No"
 }
 
-$pre_config_ok="Yes"
-if ($pre_config_ok -Match "Yes"){
 
+if ($pre_config_ok -Match "Yes"){
+    write-output "Creating the Objectstore"
     # Get the Cluster UUID of the PE environment
     $Payload=@"
     {
@@ -1941,9 +1950,9 @@ if ($pre_config_ok -Match "Yes"){
     $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
     $percentage=($response.group_results.entity_results.data | where-object {$_.name -Match "percentage_complete"}).values.values
     $counter=1
-    while (($percentage -as [int]) -lt 10){
+    while (($percentage -as [int]) -lt 15){
         Start-Sleep 60
-        write-output "Objects store is at $percentage %. Retrying in 1 minute (1/30)..."
+        write-output "Objects store is at $percentage %. Retrying in 1 minute ($counter/30)..."
         $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
         $percentage=($response.group_results.entity_results.data | where-object {$_.name -Match "percentage_complete"}).values.values
         if ($counter -eq 30){
@@ -1955,7 +1964,7 @@ if ($pre_config_ok -Match "Yes"){
     }
     if ($counter -lt 30){
         if (($response.group_results.entity_results.data | where-object {$_.name -Match "state"}).values.values -NotMatch "FAILED"){
-            write-output "The Objects store ntnx-object is still in the creation process, but we are not waiting anymore. Please check the UI for it's progress."
+            write-output "The Objects store ntnx-object is still in the creation process. It has successfully passed the pre-check phase. We are not waiting anymore. Please check the UI for it's progress."
         }else{
             write-output "The Objects store ntnx-object has not been created successfully. Please check the UI to see the reason."
         }
