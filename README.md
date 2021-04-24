@@ -34,6 +34,7 @@ As ESXi not supports the same Nutanix products as AHV, this staging script will 
 As the ESXi environment can not be 100% configured to the needs using REST APIs, PowerShell is being used. To run Powershell two paths can be followed:
 
 1. Using Native installation of PowerShell on the Machine that is being used.
+2. Have ssh and sshpass installed and added their respective locations added to the PATH environment
 2. Using a Docker container that uses the VMware PowerCli
 
 ### Native installation of Powershell
@@ -44,7 +45,7 @@ If the machine is Mac or Linux, it is still possible to install PowerShell. Plea
 1. Linux: <https://docs.microsoft.com/en-us/powershell/scripting/install/installing-powershell-core-on-linux?view=powershell-7.1>
 2. MacOS: <https://docs.microsoft.com/en-us/powershell/scripting/install/installing-powershell-core-on-macos?view=powershell-7.1>
 
-> For Linux and MacOS, preferred way is using the container version of the PowerCLI. Reason is that during the building of the script, strange behaviours have been seen where intermittent errors where shown when running the script. A RC has so far not been found...
+> For Linux and MacOS, preferred way is using the **container version of the PowerCLI.** Reason is that during the building of the script, strange behaviours have been seen where intermittent errors where shown when running the script. A RC has so far not been found...
 
 ### Native installation of PowerCLI
 
@@ -52,7 +53,7 @@ Independent of your O/S and running Native PowerShell, you have to follow this a
 
 ### Docker version of PowerCLI
 
-For this type of running the script, Docker has to be installed on your machine. There are a lot of articles on how to install Docker on your O/S. Follow this article to install Docker for your O/S <https://docs.docker.com/get-docker/>. After you have installed Docker, you can use the following command to run the script: **docker run --rm -it -v ${PWD}:/script vmware/powerclicore pwsh /script/stage_esxi.ps1** .Where:
+For this type of running the script, Docker has to be installed on your machine. There are a lot of articles on how to install Docker on your O/S. Follow this article to install Docker for your O/S <https://docs.docker.com/get-docker/>. After you have installed Docker, you can use the following command to run the script: **docker run --rm -it -v ${PWD}:/script wessenstam/esx_staging pwsh /script/stage_esxi.ps1** .Where:
 
 - --rm; after the container has stopped, remove it from the docker environment
 - -it; run in interactive mode, show the console output of the script
@@ -62,9 +63,8 @@ For this type of running the script, Docker has to be installed on your machine.
 
 > If you want to know more on the container, please read this <https://github.com/vmware/powerclicore>.
 
-<!--- 
-An extra Module has been added to the container. The Module is called Posh-SSH (<https://github.com/darkoperator/Posh-SSH>). This makes it possible to use SSH with username and password to manipulate Linux based machines. The script is using it to manipulate the Era instanace for setting its static IP Address. Besides the extra Module the example scripts have been removed from the container. How the container is build, please consult the Dockerfile in the root of the Repo.  
---->
+> An extra Module has been added to the container. These packages are ssh and sshpass. This makes it possible to use SSH with username and password to manipulate Linux based machines. The script is using it to manipulate the Era instance for setting its static IP Address. Besides the extra packages the example scripts have been removed from the container. How the container is build, please consult the Dockerfile in the root of the Repo.  
+
 
 ## Usage
 
