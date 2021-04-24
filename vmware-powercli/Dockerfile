@@ -9,7 +9,7 @@ WORKDIR /root
 # Set terminal. If we don't do this, weird readline things happen.
 RUN echo "/usr/bin/pwsh" >> /etc/shells && \
     echo "/bin/pwsh" >> /etc/shells && \
-    tdnf install -y wget tar icu powershell git unzip && \
+    tdnf install -y wget tar icu powershell git unzip openssh-clients sshpass && \
     wget https://github.com/PowerShell/PowerShell/releases/download/v7.1.1/powershell-7.1.1-linux-x64.tar.gz && \
     tar -xvf /root/powershell-7.1.1-linux-x64.tar.gz -C /usr/lib/powershell && \
     rm /usr/lib/powershell/libssl.so.1.0.0 && \
@@ -24,7 +24,6 @@ RUN echo "/usr/bin/pwsh" >> /etc/shells && \
     pwsh -c "\$ProgressPreference = \"SilentlyContinue\"; Install-Module VMware.vSphere.SsoAdmin" && \
     pwsh -c "\$ProgressPreference = \"SilentlyContinue\"; Install-Module PowerNSX -RequiredVersion 3.0.1174" && \
     pwsh -c "\$ProgressPreference = \"SilentlyContinue\"; Install-Module PowervRA -RequiredVersion 3.6.0" && \
-    pwsh -c "\$ProgressPreference = \"SilentlyContinue\"; Install-Module Posh-SSH" && \
     find / -name "net45" | xargs rm -rf && \
     echo '$ProgressPreference = "SilentlyContinue"' > /root/.config/powershell/Microsoft.PowerShell_profile.ps1 && \
     tdnf erase -y unzip && \
