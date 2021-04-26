@@ -52,7 +52,7 @@ $APIParams = @{
     Header = $Header_NTNX_Creds
 } 
 $cluster_name=(Invoke-RestMethod @APIParams -SkipCertificateCheck).entities.status.name
-
+<#
 # **********************************************************************************
 # ************************* Start of the script ************************************
 # **********************************************************************************
@@ -272,7 +272,7 @@ connect-viserver $VCENTER -User administrator@vsphere.local -Password $password 
 # Enable DRS on the vCenter
 
 Write-Output "Enabling DRS on the vCenter environment and disabling Admission Control"
-$cluster_name=(get-cluster| select-object $_.name).Name
+$vm_cluster_name=(get-cluster| select-object $_.name).Name
 Set-Cluster -Cluster $cluster_name -DRSEnabled:$true -HAAdmissionControlEnabled:$false -Confirm:$false | Out-Null
 
 Write-Output "--------------------------------------"
@@ -280,7 +280,7 @@ Write-Output "--------------------------------------"
 # Create a new Portgroup called Secondary with the correct VLAN
 
 Write-Output "Creating the Secondary network on the ESXi hosts"
-$vmhosts = Get-Cluster $cluster_name | Get-VMhost
+$vmhosts = Get-Cluster $vm_cluster_name | Get-VMhost
 
 ForEach ($vmhost in $vmhosts){
     Get-VirtualSwitch -VMhost $vmhost -Name "vSwitch0" | New-VirtualPortGroup -Name 'Secondary' -VlanId $vlan | Out-Null
@@ -1974,18 +1974,193 @@ if ($pre_config_ok -Match "Yes"){
 }
 
 Write-Output "--------------------------------------"
-
+#>
 # **********************************************************************************
 # Deploy and configure Era
 # **********************************************************************************
-Write-Output "Deploying Era to the environment"
-$Era_IP
-
-
-
-
-
-
-
-Write-Output "--------------------------------------"
 #>
+# Connect to the vCenter of the environment
+
+connect-viserver $VCENTER -User administrator@vsphere.local -Password $password | Out-Null
+$vm_cluster_name=(get-cluster| select-object $_.name).Name
+$vmhosts = Get-Cluster $vm_cluster_name | Get-VMhost
+
+$image='esxi_ovas/ERA-Server-build-2.1.1.2.ova'
+
+# Making sure we set the correct nameing for the ContentLibaray by removing the leading sublocation on the HTTP server
+if ($image -Match "/"){
+    $image_name=$image.SubString(10)
+}else{
+    $image_name=$image
+}
+# Remove the ova from the "templates" and the location where we got the Image from, but leave the isos alone
+if ($image -Match ".ova"){
+    $image_short=$image.Substring(0,$image.Length-4)
+    $image_short=$image_short.SubString(10)
+}else{
+    $image_short=$image
+}
+Write-Output "Uploading $image_name from $nfs_host ..."
+get-ContentLibrary -Name 'deploy' -Local |New-ContentLibraryItem -name $image_short -FileName $image_name -Uri "http://$nfs_host/workshop_staging/$image"| Out-Null
+Write-Output "Uploaded $image_name as $image_short in the deploy ContentLibrary"
+
+$ESXi_Host=$vmhosts[0]
+
+# Deploy the Windows Tools VM and create the templates for Centos and Windows
+
+Write-Output "Deploying $image_short via a Content Library in the Image Datastore"
+Get-ContentLibraryitem -name $image_short | new-vm -Name 'Era' -vmhost $ESXi_Host -Datastore "vmContainer1" | Out-Null
+get-vm 'Era' | Get-NetworkAdapter | Set-NetworkAdapter -NetworkName 'VM Network' -Confirm:$false | Out-Null
+
+Write-Output "Era has been deployed, now starting the VM"
+Start-VM -VM 'Era' | Out-Null
+
+disconnect-viserver * -Confirm:$false
+Write-Output "--------------------------------------"
+
+# VMware part done, focusing on Era/PE side of the house
+# Checking to see if Era is available. 1. Get IP address of Era, 2. try to connect so we know it is ready, 3. configure to use static IP and configure Era.
+# Getting IP address of Era VM
+
+write-output "Waiting 2 minutes so the VM can start and settle."
+start-sleep 120 # Give the system to start the VM
+
+$Payload=@"
+{
+    "entity_type":"mh_vm",
+    "group_member_sort_attribute":"vm_name",
+    "group_member_sort_order":"ASCENDING",
+    "group_member_attributes":[
+        {
+            "attribute":"vm_name"
+        },{
+            "attribute":"ip_addresses"
+        }
+    ],
+    "filter_criteria":"vm_name==Era"
+}
+"@
+$APIParams = @{
+    method="POST"
+    Uri="https://"+$PE_IP+":9440/api/nutanix/v3/groups"
+    ContentType="application/json"
+    Body=$Payload
+    Header = $Header_NTNX_Creds
+}
+$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+$era_temp_ip=($response.group_results.entity_results.data | where-object {$_.name -Match "ip_addresses"}).values.values
+while ($era_temp_ip -eq $null){
+    write-output "VM is still not up. Waiting 60 seconds before retrying.."
+    Start-Sleep 60
+    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+    $era_temp_ip=($response.group_results.entity_results.data | where-object {$_.name -Match "ip_addresses"}).values.values
+}
+
+# Now that we have the IP address of the era server, we need to check if Era is up and running
+
+$APIParams = @{
+    method="GET"
+    Uri="https://"+$era_temp_ip+"/era/v0.9/clusters"
+    ContentType="application/json"
+    Body=$Payload
+    Header = $Header_NTNX_PC_temp_creds
+}
+try{
+    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+}catch{
+    while ($_.Exception.Response.StatusCode.Value__ -as [int] -ne 402){
+        try{
+            $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+        }catch{
+            if ($_.Exception.Response.StatusCode.Value__ -as [int] -eq 402){
+                break
+            }
+        }
+        write-output "Era server processes are not yet ready. Waiting 60 seconds before proceeding"
+        start-sleep 60
+    }
+    write-output "Era server is up, now we can configure it"
+}
+# Configuring Era; Set password to match PE and PC
+$APIParams = @{
+    method="POST"
+    Body='{"password": "'+$password+'"}'
+    Uri="https://"+$era_temp_ip+"/era/v0.9/auth/update"
+    ContentType="application/json"
+    Header = $Header_NTNX_PC_temp_creds
+}
+$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+write-output "Era password set to PE and PC password."
+
+# Accepting EULA
+$APIParams = @{
+    method="POST"
+    Body='{"eulaAccepted": true}'
+    Uri="https://"+$era_temp_ip+"/era/v0.9/auth/validate"
+    ContentType="application/json"
+    Header = $Header_NTNX_Creds
+}
+$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+write-output "Era Eula accepted."
+
+# Change Era IP to the .43 notation
+$Command="/usr/bin/sshpass"
+$Argument = "-p Nutanix.1 ssh -2 -o ServerAliveCountMax=2 -o ServerAliveInterval=5 -o StrictHostKeyChecking=no era@$era_temp_ip `"echo yes |era-server -c 'era_server set ip="+$Era_IP+" gateway="+$ip_subnet+".1 netmask=255.255.255.128 nameserver="+$AutoAD+"'`""
+$era_change = Start-Process -FilePath $Command -ArgumentList $Argument -wait -NoNewWindow -PassThru
+
+# Is Era ready???
+$APIParams = @{
+    method="GET"
+    Uri="https://"+$Era_IP+"/era/v0.9/clusters"
+    ContentType="application/json"
+    Body=$Payload
+    Header = $Header_NTNX_Creds
+}
+try{
+    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+}catch{
+    while ($_.Exception.Response.StatusCode.Value__ -as [int] -ne 200){
+        try{
+            $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+        }catch{
+            if ($_.Exception.Response.StatusCode.Value__ -as [int] -eq 200){
+                break
+            }
+        }
+        write-output "Era server processes are not yet ready. Waiting 60 seconds before proceeding"
+        start-sleep 60
+    }
+}
+Write-Output "Era IP address has changed to $Era_IP"
+<#
+# Era is back, let's get it configured. 1) Register the PE cluster 2) 
+$Payload= @"
+{
+  "name": "EraCluster",
+  "description": "Era Bootcamp Cluster",
+  "ip": "$PE_IP",
+  "username": "admin",
+  "password": "$password",
+  "status": "UP",
+  "version": "v2",
+  "cloudType": "NTNX",
+  "properties": [
+    {
+      "name": "ERA_STORAGE_CONTAINER",
+      "value": "vmContainer1"
+    }
+  ]
+}
+"@
+$APIParams = @{
+    method="POST"
+    Uri="https://"+$Era_IP+"/era/v0.9/clusters"
+    ContentType="application/json"
+    Body=$Payload
+    Header = $Header_NTNX_Creds
+}
+$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+echo $reponse
+
+#>
+Write-Output "--------------------------------------"
