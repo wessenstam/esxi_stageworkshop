@@ -6,4 +6,4 @@
 AutoAD.ova
 *.env
 scratch-file
-
+HAR_dumps/*

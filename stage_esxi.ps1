@@ -2103,7 +2103,7 @@ $APIParams = @{
 $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
 write-output "Era Eula accepted."
 
-# Change Era IP to the .43 notation
+# Change Era IP to the .43
 $Command="/usr/bin/sshpass"
 $Argument = "-p Nutanix.1 ssh -2 -o ServerAliveCountMax=2 -o ServerAliveInterval=5 -o StrictHostKeyChecking=no era@$era_temp_ip `"echo yes |era-server -c 'era_server set ip="+$Era_IP+" gateway="+$ip_subnet+".1 netmask=255.255.255.128 nameserver="+$AutoAD+"'`""
 $era_change = Start-Process -FilePath $Command -ArgumentList $Argument -wait -NoNewWindow -PassThru
