@@ -273,7 +273,7 @@ connect-viserver $VCENTER -User administrator@vsphere.local -Password $password 
 
 Write-Output "Enabling DRS on the vCenter environment and disabling Admission Control"
 $vm_cluster_name=(get-cluster| select-object $_.name).Name
-Set-Cluster -Cluster $cluster_name -DRSEnabled:$true -HAAdmissionControlEnabled:$false -Confirm:$false | Out-Null
+Set-Cluster -Cluster $vm_cluster_name -DRSEnabled:$true -HAAdmissionControlEnabled:$false -Confirm:$false | Out-Null
 
 Write-Output "--------------------------------------"
 
@@ -1307,12 +1307,12 @@ $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).service_enablemen
 if ($response -NotMatch "ENABLED"){
     $counter=1
     while ($response -NotMatch "ENABLED"){
-        Start-Sleep 10
+        Start-Sleep 20
         $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).service_enablement_status
-        if ($counter -eq 12){
+        if ($counter -eq 6){
             Write-Output "Waited two minutes and the Files Server Manager didn't get enabled! Please check the PC UI for the reason."
         }else{
-            Write-Output "Files Server Manager has been enabled"
+            Write-Output "Files Server Manager not yet enabled. Retrying in 20 seconds"
         }
         $counter++
     }
@@ -1487,8 +1487,8 @@ $Payload=@"
         }
     }
 }
-
 "@
+
 $APIParams = @{
     method="POST"
     Body=$Payload
