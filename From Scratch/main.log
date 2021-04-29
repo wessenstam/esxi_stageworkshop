@@ -1,262 +1,0 @@
-+ . scripts/global_vars.sh
-+++ cat cluster.txt
-+++ grep -v '#'
-++ CLUSTER_INFO='10.42.9.37|techX2019!|willem@nutanix.com'
-++ CLUSTER_INFO_AR=(${CLUSTER_INFO//|/ })
-++ CLUSTER_VIP=10.42.9.37
-++ PE_PASSWORD='techX2019!'
-++ PRISM_USER=admin
-++ EMAIL=willem@nutanix.com
-++ SSHPASS=admin
-++ OCTET=(${CLUSTER_VIP//./ })
-++ IPV4_PREFIX=10.42.9
-++ IPV4_SHORT=10.42
-++ CURL_HTTP_OPTS=' --silent --max-time 25 --header Content-Type:application/json --header Accept:application/json  --insecure '
-++ DNSSERVERS=8.8.8.8
-++ '[' 42 -eq 55 ']'
-++ IMAGES_SERVER=10.42.194.11
-+++ cat image_server.txt
-+++ grep -v '#'
-++ IMAGES_DATA='10.42.194.11|images'
-++ IMAGES_DATA_AR=(${IMAGES_DATA//|/ })
-++ IMAGES_LOCATION=images
-++ NFS_LOCATION=/media/nfs
-++ VCSA_GW=10.42.9.1
-++ VCSA_IP=10.42.9.50
-++ VCSA_INST_DIR='/media/nfs/VMware/vSphere 6.5/VMware-VCSA-all-6.5.0-7119157'
-+ . scripts/lib.common.sh
-+ . scripts/lib.vmware.sh
-+ eula_pulse
-+ echo 'accepting the Eula...'
-accepting the Eula...
-+ curl -X POST -d '{"username":"SE Nutanix","companyName":"Nutanix","jobTitle":"SE at Nutanix"}' --silent --max-time 25 --header Content-Type:application/json --header Accept:application/json --insecure --user 'admin:techX2019!' https://10.42.9.37:9440/PrismGateway/services/rest/v1/eulas/accept
-{"message":"Error while updating the EULA node with the user details: the specified data already exists"}+ echo 'Disabling pulse...'
-Disabling pulse...
-+ curl -X PUT -d '{"emailContactList":null,"enable":false,"verbosityType":null,"enableDefaultNutanixEmail":false,"defaultNutanixEmail":null,"nosVersion":null,"isPulsePromptNeeded":false,"remindLater":null}
-' --silent --max-time 25 --header Content-Type:application/json --header Accept:application/json --insecure --user 'admin:techX2019!' https://10.42.9.37:9440/PrismGateway/services/rest/v1/eulas/accept
-++ curl --silent --max-time 25 --header Content-Type:application/json --header Accept:application/json --insecure --user 'admin:techX2019!' https://10.42.9.37:9440/PrismGateway/services/rest/v1/containers
-++ jq '.entities[].name'
-++ wc -l
-++ grep vmContainer1
-+ _hpoc_env=1
-+ '[' 1 -eq 1 ']'
-++ curl https://10.42.9.37:9440/PrismGateway/services/rest/v1/vms --user 'admin:techX2019!' --silent --max-time 25 --header Content-Type:application/json --header Accept:application/json --insecure
-++ jq '.entities[] | select (.vmName=="VCSA") | .hostName'
-++ tr -d '"'
-+ _name_hypervisor=
-+ '[' '!' -z ']'
-+ vcsa_storage
-++ curl --silent --max-time 25 --header Content-Type:application/json --header Accept:application/json --insecure --user 'admin:techX2019!' https://10.42.9.37:9440/PrismGateway/services/rest/v1/containers
-++ jq '.entities[].name'
-++ wc -l
-++ grep VMware_mgmt
-+ _exists=1
-+ '[' 1 -le 0 ']'
-+ echo 'Storage container already exists... Moving on...'
-Storage container already exists... Moving on...
-+ hosts_mounted=($(curl $CURL_HTTP_OPTS --user ${PRISM_USER}:${PE_PASSWORD} https://${CLUSTER_VIP}:9440/PrismGateway/services/rest/v1/containers/datastores | jq '.[] | select (.containerName=="VMware_mgmt") | .hostIpAddress' | tr -d \"))
-++ curl --silent --max-time 25 --header Content-Type:application/json --header Accept:application/json --insecure --user 'admin:techX2019!' https://10.42.9.37:9440/PrismGateway/services/rest/v1/containers/datastores
-++ tr -d '"'
-++ jq '.[] | select (.containerName=="VMware_mgmt") | .hostIpAddress'
-++ curl --silent --max-time 25 --header Content-Type:application/json --header Accept:application/json --insecure --user 'admin:techX2019!' https://10.42.9.37:9440/PrismGateway/services/rest/v2.0/cluster/
-++ jq .num_nodes
-+ cluster_hosts_num=4
-+ '[' 4 -ne 4 ']'
-+ vcsa_install
-+ _json_data='{"kind":"cluster","length":500,"offset":0}'
-++ curl -X POST -d '{"kind":"cluster","length":500,"offset":0}' --silent --max-time 25 --header Content-Type:application/json --header Accept:application/json --insecure --user 'admin:techX2019!' https://10.42.9.37:9440/api/nutanix/v3/clusters/list
-++ jq '.entities[0].status.resources.nodes.hypervisor_server_list[0].ip'
-++ tr -d '"'
-+ hypervisor1_ip=10.42.9.27
-+ curl --silent --max-time 25 --header Content-Type:application/json --header Accept:application/json --insecure http://10.42.194.11/workshop_staging/deploy-vcsa-templ.json -o /tmp/deploy-vcsa.json
-+ echo 'Manipulating the VCSA deploy json file using the defined parameters....'
-Manipulating the VCSA deploy json file using the defined parameters....
-+ sed -i 's/"ESXI_HOSTIP"/"10.42.9.27"/g' /tmp/deploy-vcsa.json
-+ sed -i 's/"PASSWORD"/"techX2019!"/g' /tmp/deploy-vcsa.json
-+ sed -i 's/"VCSA_IP"/"10.42.9.50"/g' /tmp/deploy-vcsa.json
-+ sed -i 's/"DNSSERVERS"/"8.8.8.8"/g' /tmp/deploy-vcsa.json
-+ sed -i 's/"VCSA_GW"/"10.42.9.1"/g' /tmp/deploy-vcsa.json
-+ sed -i 's/"OS_PASSWORD"/"techX2019!"/g' /tmp/deploy-vcsa.json
-+ sed -i 's/"SSO_PASSWORD"/"techX2019!"/g' /tmp/deploy-vcsa.json
-+ echo 'Mounting the VCSA Installation location to NDS'
-Mounting the VCSA Installation location to NDS
-+ mkdir -p /media/nfs
-+ mount -t nfs 10.42.194.11:/images /media/nfs
-mount.nfs: /media/nfs is busy or already mounted
-+ ROOT='/media/nfs/VMware/vSphere 6.5/VMware-VCSA-all-6.5.0-7119157/vcsa-cli-installer/lin64'
-+ export 'LD_LIBRARY_PATH=/media/nfs/VMware/vSphere 6.5/VMware-VCSA-all-6.5.0-7119157/vcsa-cli-installer/lin64/openssl-1.0.2k/lib/:/media/nfs/VMware/vSphere 6.5/VMware-VCSA-all-6.5.0-7119157/vcsa-cli-installer/lin64/libffi-3.0.9/lib/'
-+ LD_LIBRARY_PATH='/media/nfs/VMware/vSphere 6.5/VMware-VCSA-all-6.5.0-7119157/vcsa-cli-installer/lin64/openssl-1.0.2k/lib/:/media/nfs/VMware/vSphere 6.5/VMware-VCSA-all-6.5.0-7119157/vcsa-cli-installer/lin64/libffi-3.0.9/lib/'
-+ exec '/media/nfs/VMware/vSphere 6.5/VMware-VCSA-all-6.5.0-7119157/vcsa-cli-installer/lin64/vcsa-deploy.bin' install --accept-eula --no-esx-ssl-verify /tmp/deploy-vcsa.json
-Run the installer with "-v" or "--verbose" to log detailed information
-Execution Details:
-[1] Result and Log File Information
-[2] Template Syntax Validation
-[3] Template Verification
-[4] Gather Requirements
-[5] Prechecks
-[6] OVF Tool Execution
-[7] Service Installation
-[8] vCenter Service Configuration
-[9] vCenter Server Deployment Summary
-=========== [1] Result and Log File Information started at 07:33:41 ===========
-Following result and log files will be generated...
-The vCenter Server Appliance installer result file:
-/tmp/vcsaCliInstaller-2019-04-15-07-33-FYB0X_/vcsa-cli-installer.json The
-vCenter Server Appliance installer log file:
-/tmp/vcsaCliInstaller-2019-04-15-07-33-FYB0X_/vcsa-cli-installer.log The vCenter
-Server Appliance installer metadata file:
-/tmp/vcsaCliInstaller-2019-04-15-07-33-FYB0X_/vcsa-cli-installer-metadata.json
-The vCenter Server Appliance installer status file:
-/tmp/vcsaCliInstaller-2019-04-15-07-33-FYB0X_/vcsa-cli-installer-status.json The
-generated template file:
-/tmp/vcsaCliInstaller-2019-04-15-07-33-FYB0X_/generated_install.json
-============== [2] Template Syntax Validation started at 07:33:41 ==============
-Validating json template syntax...
-CEIP is not enabled because the template key 'ceip.enabled' in section 'ceip',
-subsection 'settings' was set to 'false'.
-Template syntax validation completed successfully.
-================ [3] Template Verification started at 07:33:41 ================
-Verifying template...
-Template verification completed successfully.
-=================================== 07:33:41 ===================================
-Starting vCenter Server Appliance installer to deploy "vcsa65.ntnxlab.local"...
-This appliance is a vCenter Server instance with an embedded Platform Services
-Controller.
-================= [4] Gather Requirements started at 07:33:41 =================
-Gathering Requirements...
-Gathering requirements completed successfully.
-=================================== 07:33:41 ===================================
-Generating template...
-====================== [5] Prechecks started at 07:33:41 ======================
-Performing prechecks...
-Check target thumbprint: PASS
-Check target credentials: PASS
-Check Target vCenter Server appliance name: PASS
-Check system type: PASS
-Check target ESXi host or vCenter version: PASS
-Check for OVA property availability: PASS
-Check the host's configurations against the vCSA's CPU, memory and datastore
-size requirements: PASS
-Check VC management status of ESXi containers: PASS
-Check target datastore free space: PASS
-Check Single Sign-On Server identity: PASS
-Check Single Sign-On Server credentials: PASS
-Check whether the Platform Services Controller (PSC) is external: PASS
-
-
-The following warnings were returned from the prechecks:
-DRS Warning:
-
-The target ESXi host '10.42.9.27' is managed by vCenter Server '10.42.9.40'.
-
-If any of these hosts are in a cluster, and DRS is enabled, vMotion can take
-effect and adversely impact the installation, upgrade, or migration processes.
-It is recommended that you use the *_on_VC.json template file for the target
-ESXi host if it is managed by a vCenter Server, and ensure the ESXi hosts you
-have specified are not members of clusters with DRS set to Fully Automated
-during the installation, upgrade, or migration processes.
-
-Basic verification completed successfully.
-================== [6] OVF Tool Execution started at 07:33:43 ==================
-Running OVF Tool to deploy the OVF...
-OVF Tool: Opening OVA source: /media/nfs/VMware/vSphere
-6.5/VMware-VCSA-all-6.5.0-7119157/vcsa-cli-installer/lin64/../../vcsa/VMware-vCenter-Server-Appliance-6.5.0.12000-7119157_OVF10.ova
-OVF Tool: Opening VI target: vi://root@10.42.9.27:443/
-OVF Tool: Deploying to VI: vi://root@10.42.9.27:443/
-OVF Tool: Disk progress: 1%OVF Tool: Disk progress: 2%OVF Tool: Disk progress: 3%OVF Tool: Disk progress: 4%OVF Tool: Disk progress: 5%OVF Tool: Disk progress: 6%OVF Tool: Disk progress: 7%OVF Tool: Disk progress: 8%OVF Tool: Disk progress: 9%OVF Tool: Disk progress: 10%OVF Tool: Disk progress: 11%OVF Tool: Disk progress: 12%OVF Tool: Disk progress: 13%OVF Tool: Disk progress: 14%OVF Tool: Disk progress: 15%OVF Tool: Disk progress: 16%OVF Tool: Disk progress: 17%OVF Tool: Disk progress: 18%OVF Tool: Disk progress: 19%OVF Tool: Disk progress: 20%OVF Tool: Disk progress: 21%OVF Tool: Disk progress: 22%OVF Tool: Disk progress: 23%OVF Tool: Disk progress: 24%OVF Tool: Disk progress: 25%OVF Tool: Disk progress: 26%OVF Tool: Disk progress: 27%OVF Tool: Disk progress: 28%OVF Tool: Disk progress: 29%OVF Tool: Disk progress: 30%OVF Tool: Disk progress: 31%OVF Tool: Disk progress: 32%OVF Tool: Disk progress: 33%OVF Tool: Disk progress: 34%OVF Tool: Disk progress: 35%OVF Tool: Disk progress: 36%OVF Tool: Disk progress: 37%OVF Tool: Disk progress: 38%OVF Tool: Disk progress: 39%OVF Tool: Disk progress: 40%OVF Tool: Disk progress: 41%OVF Tool: Disk progress: 42%OVF Tool: Disk progress: 43%OVF Tool: Disk progress: 44%OVF Tool: Disk progress: 45%OVF Tool: Disk progress: 46%OVF Tool: Disk progress: 47%OVF Tool: Disk progress: 48%OVF Tool: Disk progress: 49%OVF Tool: Disk progress: 50%OVF Tool: Disk progress: 51%OVF Tool: Disk progress: 52%OVF Tool: Disk progress: 53%OVF Tool: Disk progress: 54%OVF Tool: Disk progress: 55%OVF Tool: Disk progress: 56%OVF Tool: Disk progress: 57%OVF Tool: Disk progress: 58%OVF Tool: Disk progress: 59%OVF Tool: Disk progress: 60%OVF Tool: Disk progress: 61%OVF Tool: Disk progress: 62%OVF Tool: Disk progress: 63%OVF Tool: Disk progress: 64%OVF Tool: Disk progress: 65%OVF Tool: Disk progress: 66%OVF Tool: Disk progress: 67%OVF Tool: Disk progress: 68%OVF Tool: Disk progress: 69%OVF Tool: Disk progress: 70%OVF Tool: Disk progress: 71%OVF Tool: Disk progress: 72%OVF Tool: Disk progress: 73%OVF Tool: Disk progress: 74%OVF Tool: Disk progress: 75%OVF Tool: Disk progress: 76%OVF Tool: Disk progress: 77%OVF Tool: Disk progress: 78%OVF Tool: Disk progress: 79%OVF Tool: Disk progress: 80%OVF Tool: Disk progress: 81%OVF Tool: Disk progress: 82%OVF Tool: Disk progress: 83%OVF Tool: Disk progress: 84%OVF Tool: Disk progress: 85%OVF Tool: Disk progress: 86%OVF Tool: Disk progress: 87%OVF Tool: Disk progress: 88%OVF Tool: Disk progress: 89%OVF Tool: Disk progress: 90%OVF Tool: Disk progress: 91%OVF Tool: Disk progress: 92%OVF Tool: Disk progress: 93%OVF Tool: Disk progress: 94%OVF Tool: Disk progress: 95%OVF Tool: Disk progress: 96%OVF Tool: Disk progress: 97%OVF Tool: Disk progress: 98%OVF Tool: Disk progress: 99%
-OVF Tool: Transfer Completed
-OVF Tool: Powering on VM: vcsa65.ntnxlab.local
-OVF Tool: Task progress: 0%OVF Tool: Task progress: 48%
-OVF Tool: Task Completed
-OVF Tool: Completed successfully
-================= [7] Service Installation started at 07:34:47 =================
-Installing services...
-Service Installation: Progress: 5% Setting up storage
-Service Installation: Progress: 51% Installed
-VMware-jmemtool-6.5.0-7119157.x86_64.rpm
-Service Installation: Progress: 54% Installed
-VMware-unixODBC-2.3.2.vmw.2-6.5.0.x86_64.rpm
-Service Installation: Progress: 55% Installed
-vmware-lwis-6.2.0-5776266.x86_64.rpm
-Service Installation: Progress: 60% Installed
-vmware-identity-sts-6.5.0.2211-5814580.noarch.rpm
-Service Installation: Progress: 78% Installed
-VMware-vpxd-6.5.0-7119157.x86_64.rpm
-Service Installation: Progress: 83% Installed
-vmware-eam-6.5.0-7119157.x86_64.rpm
-Service Installation: Progress: 86% Installed
-VMware-UpdateManager-6.5.0-5939545.x86_64.rpm
-Service Installation: Progress: 90% Installed
-vsphere-client-6.5.0-7119157.noarch.rpm
-Service Installation: Progress: 95% Configuring the machine
-vCenter Server Service installations succeeded.
-============ [8] vCenter Service Configuration started at 07:44:47 ============
-Configuring services for first time use...
-vCenter Service Configuration: Progress: 2% Starting VMware Authentication
-Framework...
-vCenter Service Configuration: Progress: 5% Starting VMware Identity Management
-Service...
-vCenter Service Configuration: Progress: 17% Starting VMware Component
-Manager...
-vCenter Service Configuration: Progress: 20% Starting VMware License Service...
-vCenter Service Configuration: Progress: 22% Starting VMware Platform Services
-Controller Client...
-vCenter Service Configuration: Progress: 25% Starting VMware Service Control
-Agent...
-vCenter Service Configuration: Progress: 28% Starting VMware vAPI Endpoint...
-vCenter Service Configuration: Progress: 31% Starting VMware Service Lifecycle
-Manager API...
-vCenter Service Configuration: Progress: 34% Starting VMware Appliance
-Management Service...
-vCenter Service Configuration: Progress: 45% Starting VMware Postgres...
-vCenter Service Configuration: Progress: 51% Starting VMware vCenter-Services...
-vCenter Service Configuration: Progress: 54% Starting VMware Message Bus
-Configuration Service...
-vCenter Service Configuration: Progress: 58% Starting VMware vSphere Web
-Client...
-vCenter Service Configuration: Progress: 59% Starting VMware vSphere Web
-Client...
-vCenter Service Configuration: Progress: 61% Starting VMware vSphere Client...
-vCenter Service Configuration: Progress: 62% Starting VMware vCenter Server...
-vCenter Service Configuration: Progress: 65% Starting VMware Content Library
-Service...
-vCenter Service Configuration: Progress: 68% Starting VMware ESX Agent
-Manager...
-vCenter Service Configuration: Progress: 71% Starting VMware vSphere Auto Deploy
-Waiter...
-vCenter Service Configuration: Progress: 74% Starting VMware vSphere
-Profile-Driven Storage Service...
-vCenter Service Configuration: Progress: 77% Starting VMware Update Manager...
-vCenter Service Configuration: Progress: 80% Starting VMware vCenter High
-Availability...
-vCenter Service Configuration: Progress: 82% Starting VMware vSphere
-Authentication Proxy...
-vCenter Service Configuration: Progress: 85% Starting VMware VSAN Health
-Service...
-vCenter Service Configuration: Progress: 88% Starting VMware vService Manager...
-vCenter Service Configuration: Progress: 91% Starting VMware Image Builder
-Manager...
-vCenter Service Configuration: Progress: 97% Starting VMware Performance
-Charts...
-First time configuration succeeded.
-========== [9] vCenter Server Deployment Summary started at 07:53:37 ==========
-Deployment Summary
-=================================== 07:53:38 ===================================
-vCenter Server Appliance installer finished deploying "vcsa65.ntnxlab.local".
-This appliance is a vCenter Server instance with an embedded Platform Services
-Controller.
-    System Name: 10.42.9.50
-    Log in as: Administrator@vsphere.local
-Finished successfully.
-=================================== 07:53:38 ===================================
-Result and Log File Information...
-The vCenter Server Appliance installer result file:
-/tmp/vcsaCliInstaller-2019-04-15-07-33-FYB0X_/vcsa-cli-installer.json The
-vCenter Server Appliance installer log file:
-/tmp/vcsaCliInstaller-2019-04-15-07-33-FYB0X_/vcsa-cli-installer.log The vCenter
-Server Appliance installer metadata file:
-/tmp/vcsaCliInstaller-2019-04-15-07-33-FYB0X_/vcsa-cli-installer-metadata.json
-The vCenter Server Appliance installer status file:
-/tmp/vcsaCliInstaller-2019-04-15-07-33-FYB0X_/vcsa-cli-installer-status.json The
-generated template file:
-/tmp/vcsaCliInstaller-2019-04-15-07-33-FYB0X_/generated_install.json
