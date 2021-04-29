@@ -268,7 +268,6 @@ Function EnableDRSDisableAdmissionContol{
 }
 
 
-
 # Create a new Portgroup called Secondary with the correct VLAN
 Function CreateSecondaryNetwork{
     param(
