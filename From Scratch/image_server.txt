@@ -1,5 +1,0 @@
-# File must contain:
-# Image server IP address|Images location
-# Example:
-# 10.42.8.60|images
-10.42.194.11|images

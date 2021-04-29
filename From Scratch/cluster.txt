@@ -1,5 +1,0 @@
-# File must contain:
-# CLUSTER VIP|PE_PASSWORD|VCSA_GW
-# Example:
-# 10.42.9.37|Nutanix/4u|10.42.9.1
-10.42.9.37|techX2019!|willem@nutanix.com
