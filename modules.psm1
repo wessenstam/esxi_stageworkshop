@@ -1248,60 +1248,6 @@ if ($response -eq $true){
 Write-Output "--------------------------------------"
 
 # **********************************************************************************
-# Enable Karbon
-# **********************************************************************************
-Write-Output "Enabling Karbon"
-
-$Payload_en='{"value":"{\".oid\":\"ClusterManager\",\".method\":\"enable_service_with_prechecks\",\".kwargs\":{\"service_list_json\":\"{\\\"service_list\\\":[\\\"KarbonUIService\\\",\\\"KarbonCoreService\\\"]}\"}}"}'
-$Payload_chk='{"value":"{\".oid\":\"ClusterManager\",\".method\":\"is_service_enabled\",\".kwargs\":{\"service_name\":\"KarbonUIService\"}}"}'
-
-# Enable Karbon
-
-$APIParams = @{
-    method="POST"
-    Body=$Payload_en
-    Uri="https://"+$PC_IP+":9440/PrismGateway/services/rest/v1/genesis"
-    ContentType="application/json"
-    Header = $Header_NTNX_Creds
-} 
-$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
-if ($response.value -Match "true"){
-    Write-Output "Enable Karbon command has been received. Waiting for karbon to be ready"
-}else{
-    Write-Output "Retrying enablening Karbon one more time"
-    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
-    Start-Sleep 10
-}
-
-# Checking if Karbon has been enabled
-
-$APIParams = @{
-    method="POST"
-    Body=$Payload_chk
-    Uri="https://"+$PC_IP+":9440/PrismGateway/services/rest/v1/genesis"
-    ContentType="application/json"
-    Header = $Header_NTNX_Creds
-} 
-$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
-$counter=1
-while ($response.value -NotMatch "true"){
-    Write-Output "Karbon is not ready"
-    Start-Sleep 10
-    if ($counter -eq 12){
-        Write-Output "We tried for 2 minutes and Karbon is still not enabled."
-        break
-    }
-    $counter++
-}
-if ($counter -eq 12){
-    Write-Output "Please use the UI to enable Karbon"
-}else{
-    Write-Output "Karbon has been enabled"
-}
-
-Write-Output "--------------------------------------"
-
-# **********************************************************************************
 # Enable File Server manager
 # **********************************************************************************
 
