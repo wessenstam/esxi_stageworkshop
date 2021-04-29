@@ -60,7 +60,89 @@ $datavar=@{
     vlan = $vlan
 }
 
-$cluster_name=Get-Clustername -password $password -PE_IP $PE_IP
+$cluster_name=GetClustername -IP $PE_IP -Header $Header_NTNX_Creds
 
-echo $cluster_name
+Write-Output "*************************************************"
+Write-Output "Concentrating on Nutanix PE environment ($cluster_name).."
+Write-Output "*************************************************"
+
+# Set all needed variables in the global datavar object
+$datavar=@{
+    PE_IP = $PE_IP
+    ip_subnet = $ip_subnet
+    password = $password
+    nfs_host = $nfs_host
+    AutoAD = $AutoAD
+    VCENTER = $VCENTER
+    PC_IP = $PC_IP
+    Era_IP = $Era_IP
+    GW = $GW
+    vlan = $vlan
+    cluster_name = $cluster_name
+}
+
+# **************************************
+# Initial PE configuration
+# **************************************
+<#
+# Accept the Eula
+$response=AcceptEula -IP $PE_IP  -Header $Header_NTNX_Creds
+Write-Output $response
+
+# Disable Pulse
+$response=DisablePulse -IP $PE_IP  -Header $Header_NTNX_Creds
+Write-Output $response
+
+# Change the default SP Name to Sp1
+$response=ChangeSPName -IP $PE_IP  -Header $Header_NTNX_Creds
+Write-Output $response
+
+# Change the default SP Name to Sp1
+$response=RenameDefaultCNTR -IP $PE_IP  -Header $Header_NTNX_Creds
+Write-Output $response
+
+# Create Images container
+$response=CreateImagesCNTR -IP $PE_IP  -Header $Header_NTNX_Creds
+Write-Output $response
+
+# Mount Images container
+$response=MountImagesCNTR -IP $PE_IP  -Header $Header_NTNX_Creds
+Write-Output $response
+
+Write-Output "*************************************************"
+Write-Output "Concentrating on VMware environment ($VCENTER).."
+Write-Output "*************************************************"
+
+# **************************************
+# Initial VMware configuration
+# **************************************
+#>
+# Connect to vCenter
+$response=ConnectVMware -vcenter $VCENTER -password $password
+write-output $response
+
+#Enable DRS and disable Admission control
+$response=EnableDRSDisableAdmissionContol -vcenter $VCENTER -password $password
+write-output $response
+
+# Create the Secondary network ith the correct VLAN
+$vm_cluster_name=$response.substring($response.IndexOf("(")+1,$response.length-$response.IndexOf("(")-3)
+$response=CreateSecondaryNetwork -vm_cluster_name $vm_cluster_name -vlan $vlan
+Write-Output $response
+
+# Create Content Libarary
+New-ContentLibrary -Name "deploy" -Datastore "Images" | Out-Null
+
+# Upload needed images
+$images=@('esxi_ovas/AutoAD_Sysprep.ova') #,'esxi_ovas/WinTools-AHV.ova','esxi_ovas/CentOS.ova','esxi_ovas/Windows2016.ova','CentOS7.iso','Windows2016.iso')
+foreach($image in $images){
+    $response=UploadImage -image $image -nfs_host $nfs_host
+    Write-Output $response
+}
+
+# Disconnecting from the vCenter
+$response=DisconnectvCenter
+write-output $response
+
+# Remove the loaded modules from memory
 remove-module modules

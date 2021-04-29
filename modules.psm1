@@ -1,130 +1,127 @@
-
-function Get-Clustername {
-
+# Get the Clustername
+function GetClustername {
     param (
-        [string] $password,
-        [string] $PE_IP
+        [string] $IP,
+        [object] $Header
     )
 
-    $Header_NTNX_Creds=@{"Authorization" = "Basic "+[System.Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes("admin:"+$($password)));}
-    # Get the name of the cluster and assign to a variable
-    
-
-    $URL="https://$($PE_IP):9440/api/nutanix/v3/clusters/list"
+    $URL="https://$($IP):9440/api/nutanix/v3/clusters/list"
     $Payload='{"kind":"cluster","length":500,"offset":0}'
     
-    Invoke-RestMethod -Method "POST" -Body $Payload -Uri $URL -ContentType 'application/json' -Headers $Header_NTNX_Creds -SkipCertificateCheck;
-    echo $cluster_name
+    $cluster_name=(Invoke-RestMethod -Method "POST" -Body $Payload -Uri $URL -ContentType 'application/json' -Headers $($Header) -SkipCertificateCheck).entities.status.name
+    return $cluster_name
 }
 
-<#
-# **********************************************************************************
-# ************************* Start of the script ************************************
-# **********************************************************************************
-
-# Get something on the screen...
-
-Write-Output "*************************************************"
-Write-Output "Concentrating on Nutanix PE environment ($cluster_name).."
-Write-Output "*************************************************"
-
-# **********************************************************************************
-# PE Init Part of the script
-# **********************************************************************************
 
 # Accept the EULA
 
-$APIParams = @{
-    method="POST"
-    Body='{"username":"NTNX","companyName":"NTNX","jobTitle":"NTNX"}'
-    Uri="https://"+$PE_IP+":9440/PrismGateway/services/rest/v1/eulas/accept"
-    ContentType="application/json"
-    Header = $Header_NTNX_Creds
-} 
-$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).value
-if ($response = "True"){
-    Write-Output "Eula Accepted"
-}else{
-    Write-Output "Eula NOT accepted"
-}
+function AcceptEula{
+    param(
+        [string] $IP,
+        [object] $Header
+    )
 
-Write-Output "--------------------------------------"
+    $APIParams = @{
+        method="POST"
+        Body='{"username":"NTNX","companyName":"NTNX","jobTitle":"NTNX"}'
+        Uri="https://$($IP):9440/PrismGateway/services/rest/v1/eulas/accept"
+        ContentType="application/json"
+        Header = $Header
+    } 
+    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).value
+    if ($response = "True"){
+        Write-Output "Eula Accepted"
+    }else{
+        Write-Output "Eula not accepted"
+    }
+}
 
 # Disable Pulse
-
-$APIParams = @{
-    method="PUT"
-    Body='{"enable":"false","enableDefaultNutanixEmail":"false","isPulsePromptNeeded":"false"}'
-    Uri="https://"+$PE_IP+":9440/PrismGateway/services/rest/v1/pulse"
-    ContentType="application/json"
-    Header = $Header_NTNX_Creds
-} 
-$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).value
-if ($response = "True"){
-    Write-Output "Pulse Disabled"
-}else{
-    Write-Output "Pulse NOT disabled"
+function DisablePulse {
+    param (
+        [string] $IP,
+        [object] $Header
+    )
+    $APIParams = @{
+        method="PUT"
+        Body='{"enable":"false","enableDefaultNutanixEmail":"false","isPulsePromptNeeded":"false"}'
+        Uri="https://$($IP):9440/PrismGateway/services/rest/v1/pulse"
+        ContentType="application/json"
+        Header = $Header
+    } 
+    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).value
+    if ($response = "True"){
+        return "Pulse Disabled"
+    }else{
+        return "Pulse NOT disabled"
+    }
 }
-
-Write-Output "--------------------------------------"
 
 # Change the name of the Storage Pool to SP1
 
 # First get the Disk IDs
+function ChangeSPName {
+    param (
+        [string] $IP,
+        [object] $Header
+    )
+    $APIParams = @{
+        method="GET"
+        Uri="https://$($IP):9440/PrismGateway/services/rest/v1/storage_pools?sortOrder=storage_pool_name"
+        ContentType="application/json"
+        Header = $Header
+    } 
+    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck | ConvertTo-JSON -Depth 10)
+    $disks=($response | ConvertFrom-JSON).entities.disks | ConvertTo-JSON
+    $sp_id=($response | ConvertFrom-JSON).entities.id | ConvertTo-JSON
 
-$APIParams = @{
-    method="GET"
-    Uri="https://"+$PE_IP+":9440/PrismGateway/services/rest/v1/storage_pools?sortOrder=storage_pool_name"
-    ContentType="application/json"
-    Header = $Header_NTNX_Creds
-} 
-$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck | ConvertTo-JSON -Depth 10)
-$disks=($response | ConvertFrom-JSON).entities.disks | ConvertTo-JSON
-$sp_id=($response | ConvertFrom-JSON).entities.id | ConvertTo-JSON
+    # Change the name of the Storage Pool
 
-# Change the name of the Storage Pool
-
-$Body=@"
+    $Body=@"
 {
     "id":$sp_id,
     "name":"SP01",
     "disks":$disks
 }
 "@
-$APIParams = @{
-    method="PUT"
-    Uri="https://"+$PE_IP+":9440/PrismGateway/services/rest/v1/storage_pools?sortOrder=storage_pool_name"
-    ContentType="application/json"
-    Body=$Body
-    Header = $Header_NTNX_Creds
-}
+    $APIParams = @{
+        method="PUT"
+        Uri="https://$($IP):9440/PrismGateway/services/rest/v1/storage_pools?sortOrder=storage_pool_name"
+        ContentType="application/json"
+        Body=$Body
+        Header = $Header
+    }
 
-$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).value
-if ($response="True"){
-    Write-Output "Storage Pool has been renamed"
-}else{
-    Write-Output "Storage Pool has not been renamed"
-}
+    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).value
+    if ($response="True"){
+        return "Storage Pool has been renamed"
+    }else{
+        return "Storage Pool has not been renamed"
+    }
 
-Write-Output "--------------------------------------"
+}
 
 # Change the name of the defaulxxxx storage container to Default
+Function RenameDefaultCNTR{
+    param (
+        [string] $IP,
+        [object] $Header
+    )
 
-# Get the ID and UUID of the default container first
+    # Get the ID and UUID of the default container first
+    $APIParams = @{
+        method="GET"
+        Uri="https://$($IP):9440/PrismGateway/services/rest/v2.0/storage_containers"
+        ContentType="application/json"
+        Header = $Header
+    } 
+    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).entities | where-object {$_.name -match "efault"}
+    $default_cntr_id=$response.id | ConvertTO-JSON
+    $default_cntr_uuid=$response.storage_container_uuid | ConvertTO-JSON
 
-$APIParams = @{
-    method="GET"
-    Uri="https://"+$PE_IP+":9440/PrismGateway/services/rest/v2.0/storage_containers"
-    ContentType="application/json"
-    Header = $Header_NTNX_Creds
-} 
-$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).entities | where-object {$_.name -match "efault"}
-$default_cntr_id=$response.id | ConvertTO-JSON
-$default_cntr_uuid=$response.storage_container_uuid | ConvertTO-JSON
 
-
-$Payload=@"
-{
+    $Payload=@"
+    {
     "id":$default_cntr_id,
     "storage_container_uuid":$default_cntr_uuid,
     "name":"default",
@@ -134,133 +131,177 @@ $Payload=@"
 }
 "@
 
-$APIParams = @{
-    method="PATCH"
-    Uri="https://"+$PE_IP+":9440/PrismGateway/services/rest/v2.0/storage_containers"
-    ContentType="application/json"
-    Body=$Payload
-    Header = $Header_NTNX_Creds
+    $APIParams = @{
+        method="PATCH"
+        Uri="https://$($IP):9440/PrismGateway/services/rest/v2.0/storage_containers"
+        ContentType="application/json"
+        Body=$Payload
+        Header = $Header
+    }
+    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+    if ($response = "True"){
+        return "Default Storage Container has been updated"
+    }else{
+        return "Default Storage Container has NOT been updated"
+    }
 }
-$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
-if ($response = "True"){
-    Write-Output "Default Storage Container has been updated"
-}else{
-    Write-Output "Default Storage Container has NOT been updated"
-}
-
-Write-Output "--------------------------------------"
-
 # Create the Images datastore
-
-$Payload=@"
-{
-    "name": "Images",
-    "marked_for_removal": false,
-    "replication_factor": 2,
-    "oplog_replication_factor": 2,
-    "nfs_whitelist": [],
-    "nfs_whitelist_inherited": true,
-    "erasure_code": "off",
-    "prefer_higher_ecfault_domain": null,
-    "erasure_code_delay_secs": null,
-    "finger_print_on_write": "off",
-    "on_disk_dedup": "OFF",
-    "compression_enabled": false,
-    "compression_delay_in_secs": null,
-    "is_nutanix_managed": null,
-    "enable_software_encryption": false,
-    "encrypted": null
-}
+Function CreateImagesCNTR{
+    param (
+        [string] $IP,
+        [object] $Header
+    )
+    $Payload=@"
+    {
+        "name": "Images",
+        "marked_for_removal": false,
+        "replication_factor": 2,
+        "oplog_replication_factor": 2,
+        "nfs_whitelist": [],
+        "nfs_whitelist_inherited": true,
+        "erasure_code": "off",
+        "prefer_higher_ecfault_domain": null,
+        "erasure_code_delay_secs": null,
+        "finger_print_on_write": "off",
+        "on_disk_dedup": "OFF",
+        "compression_enabled": false,
+        "compression_delay_in_secs": null,
+        "is_nutanix_managed": null,
+        "enable_software_encryption": false,
+        "encrypted": null
+    }
 "@
 
-$APIParams = @{
-  method="POST"
-  Uri="https://"+$PE_IP+":9440/PrismGateway/services/rest/v2.0/storage_containers"
-  ContentType="application/json"
-  Body=$Payload
-  Header = $Header_NTNX_Creds
-}
-$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
-if ($response = "True"){
-    Write-Output "Images Storage Container has been created"
-}else{
-    Write-Output "Images Storage Container has NOT been created"
+    $APIParams = @{
+    method="POST"
+    Uri="https://$($IP):9440/PrismGateway/services/rest/v2.0/storage_containers"
+    ContentType="application/json"
+    Body=$Payload
+    Header = $Header
+    }
+    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+    if ($response = "True"){
+        return "Images Storage Container has been created"
+    }else{
+        return "Images Storage Container has NOT been created"
+    }
+
 }
 
-Write-Output "--------------------------------------"
 
 # Mount the Images container to all ESXi hosts
+Function MountImagesCNTR{
+    param (
+        [string] $IP,
+        [object] $Header
+    )
+    # Get the ESXi Hosts UUIDS
 
-# Get the ESXi Hosts UUIDS
+    $APIParams = @{
+        method="GET"
+        Uri="https://$($IP):9440/PrismGateway/services/rest/v2.0/hosts/"
+        ContentType="application/json"
+        Header = $Header
+    }
+    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).entities.service_vmid
+    $host_ids=$response | ConvertTO-JSON
 
-$APIParams = @{
-    method="GET"
-    Uri="https://"+$PE_IP+":9440/PrismGateway/services/rest/v2.0/hosts/"
-    ContentType="application/json"
-    Header = $Header_NTNX_Creds
-}
-$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).entities.service_vmid
-$host_ids=$response | ConvertTO-JSON
+    # Mount to all ESXi Hosts
 
-# Mount to all ESXi Hosts
-
-$Payload=@"
-{
-    "containerName":"Images",
-    "datastoreName":"",
-    "nodeIds":$host_ids,
-    "readOnly":false
-}
+    $Payload=@"
+    {
+        "containerName":"Images",
+        "datastoreName":"",
+        "nodeIds":$host_ids,
+        "readOnly":false
+    }
 "@
 
-$APIParams = @{
-    method="POST"
-    Uri="https://"+$PE_IP+":9440/PrismGateway/services/rest/v1/containers/datastores/add_datastore"
-    ContentType="application/json"
-    Body=$Payload
-    Header = $Header_NTNX_Creds
+    $APIParams = @{
+        method="POST"
+        Uri="https://$($IP):9440/PrismGateway/services/rest/v1/containers/datastores/add_datastore"
+        ContentType="application/json"
+        Body=$Payload
+        Header = $Header
+    }
+    try{
+        $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+        return "The Images container has been mounted on all ESXi hosts"
+    }catch{
+        return "The Images container has not been mounted on all ESXi hosts"
+    }
 }
-$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
 
-Write-Output "*************************************************"
-Write-Output "Concentrating on VMware environment.."
-Write-Output "*************************************************"
 
 # **********************************************************************************
-# Start the VMware environment manipulations
+# VMware environment manipulations
 # **********************************************************************************
 
 # Connect to the vCenter of the environment
-
-connect-viserver $VCENTER -User administrator@vsphere.local -Password $password | Out-Null
-
-# Enable DRS on the vCenter
-
-Write-Output "Enabling DRS on the vCenter environment and disabling Admission Control"
-$vm_cluster_name=(get-cluster| select-object $_.name).Name
-Set-Cluster -Cluster $vm_cluster_name -DRSEnabled:$true -HAAdmissionControlEnabled:$false -Confirm:$false | Out-Null
-
-Write-Output "--------------------------------------"
-
-# Create a new Portgroup called Secondary with the correct VLAN
-
-Write-Output "Creating the Secondary network on the ESXi hosts"
-$vmhosts = Get-Cluster $vm_cluster_name | Get-VMhost
-
-ForEach ($vmhost in $vmhosts){
-    Get-VirtualSwitch -VMhost $vmhost -Name "vSwitch0" | New-VirtualPortGroup -Name 'Secondary' -VlanId $vlan | Out-Null
+Function ConnectVMware{
+    param(
+        [string] $vcenter,
+        [string] $password
+    )
+    try{
+        connect-viserver $($vcenter) -User administrator@vsphere.local -Password $($password) | Out-Null
+        return "Connected to vCenter $($vcenter)"
+    }catch{
+        return "Connection to vCenter $($vcenter) failed.."
+    }
 }
 
-Write-Output "--------------------------------------"
+    # Enable DRS on the vCenter
+
+Function EnableDRSDisableAdmissionContol{
+    param(
+        [string] $vcenter,
+        [string] $password
+    )
+    $vm_cluster_name=(get-cluster| select-object $_.name).Name
+    try{
+        Set-Cluster -Cluster $vm_cluster_name -DRSEnabled:$true -HAAdmissionControlEnabled:$false -Confirm:$false | Out-Null
+        return "DRS has been enabled and Adminission Control has been disabled ($vm_cluster_name)."
+    }catch{
+        return "DRS has not been enabled and Adminission Control is still enabled ($vm_cluster_name)."
+    }
+}
+
+
+
+# Create a new Portgroup called Secondary with the correct VLAN
+Function CreateSecondaryNetwork{
+    param(
+        [string] $vm_cluster_name,
+        [string] $vlan
+    )
+
+    $vmhosts = Get-Cluster $vm_cluster_name | Get-VMhost
+
+    ForEach ($vmhost in $vmhosts){
+        Try{
+            Get-VirtualSwitch -VMhost $vmhost -Name "vSwitch0" | New-VirtualPortGroup -Name 'Secondary' -VlanId $vlan | Out-Null
+            
+        }catch{
+            $Fail="Yes"
+        }
+    }
+    if ($Fail -Match "No"){
+        return "Network has been created"
+    }else{
+        return "Network has not been created. Maybe it already existed?"
+    }
+    
+}
+
 
 # Create a ContentLibray and copy the needed images to it
+Function UploadImage{
+    param(
+        [string] $image,
+        [string] $nfs_host
+    )
 
-Write-Output "Uplading needed images"
-
-New-ContentLibrary -Name "deploy" -Datastore "Images" | Out-Null
-
-$images=@('esxi_ovas/AutoAD_Sysprep.ova','esxi_ovas/WinTools-AHV.ova','esxi_ovas/CentOS.ova','esxi_ovas/Windows2016.ova','CentOS7.iso','Windows2016.iso')
-foreach($image in $images){
     # Making sure we set the correct nameing for the ContentLibaray by removing the leading sublocation on the HTTP server
     if ($image -Match "/"){
         $image_name=$image.SubString(10)
@@ -274,10 +315,11 @@ foreach($image in $images){
     }else{
         $image_short=$image
     }
-    Write-Output "Uploading $image_name from $nfs_host ..."
     get-ContentLibrary -Name 'deploy' -Local |New-ContentLibraryItem -name $image_short -FileName $image_name -Uri "http://$nfs_host/workshop_staging/$image"| Out-Null
-    Write-Output "Uploaded $image_name as $image_short in the deploy ContentLibrary"
+    return "Uploaded $image_name as $image_short in the deploy ContentLibrary"
 }
+
+<#
 
 Write-Output "--------------------------------------"
 
@@ -341,10 +383,22 @@ while ($true){
 }
 Write-Output "AutoAD is ready for being used. Progressing..."
 Write-Output "--------------------------------------"
+#>
+
+# Close the VMware connection
+Function DisconnectvCenter {
+    try{
+        disconnect-viserver * -Confirm:$false
+        return "Disconnected from vCenter"
+    }catch{
+        return "Still connections to vCenter are active. Please close them yourself."
+    }
+
+}
 
 # Close the VMware connection
 
-disconnect-viserver * -Confirm:$false
+<#
 
 # **********************************************************************************
 # Start the PE environment manipulations
