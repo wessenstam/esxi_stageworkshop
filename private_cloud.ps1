@@ -2,8 +2,15 @@
 Set-PowerCLIConfiguration -InvalidCertificateAction:Ignore -DefaultVIServerMode:Multiple -confirm:$false | Out-Null
 Set-PowerCLIConfiguration -Scope User -ParticipateInCEIP:$false -confirm:$false | Out-Null
 
-# Get the modules in
-import-module ./modules
+# are we running natively or from the docker container?
+if (Test-Path -Path ./environment.env -PathType Leaf){
+    $parameters=get-content "./environment.env"
+    import-module ./Modules/modules
+}else{
+    $parameters=get-content "/script/environment.env"
+    import-Module /script/Modules/modules
+}
+
 
 # **********************************************************************************
 # Setting the needed variables
@@ -80,11 +87,11 @@ $datavar=@{
     vlan = $vlan
     cluster_name = $cluster_name
 }
-
+<#
 # **************************************
 # Initial PE configuration
 # **************************************
-<#
+
 # Accept the Eula
 $response=AcceptEula -IP $PE_IP  -Header $Header_NTNX_Creds
 Write-Output $response
@@ -108,7 +115,7 @@ Write-Output $response
 # Mount Images container
 $response=MountImagesCNTR -IP $PE_IP  -Header $Header_NTNX_Creds
 Write-Output $response
-
+#>
 Write-Output "*************************************************"
 Write-Output "Concentrating on VMware environment ($VCENTER).."
 Write-Output "*************************************************"
@@ -116,7 +123,7 @@ Write-Output "*************************************************"
 # **************************************
 # Initial VMware configuration
 # **************************************
-#>
+
 # Connect to vCenter
 $response=ConnectVMware -vcenter $VCENTER -password $password
 write-output $response
@@ -127,18 +134,38 @@ write-output $response
 
 # Create the Secondary network in the correct VLAN
 $vm_cluster_name=$response.substring($response.IndexOf("(")+1,$response.length-$response.IndexOf("(")-3)
+<#
 $response=CreateSecondaryNetwork -vm_cluster_name $vm_cluster_name -vlan $vlan
 Write-Output $response
 
+Write-Output "Uploading needed images"
 # Create Content Libarary
 New-ContentLibrary -Name "deploy" -Datastore "Images" | Out-Null
 
 # Upload needed images
-$images=@('esxi_ovas/AutoAD_Sysprep.ova') #,'esxi_ovas/CentOS.ova','esxi_ovas/Windows2016.ova')
+$images=@('esxi_ovas/AutoAD_Sysprep.ova','esxi_ovas/CentOS.ova','esxi_ovas/Windows2016.ova')
 foreach($image in $images){
     $response=UploadImage -image $image -nfs_host $nfs_host
     Write-Output $response
 }
+
+# Deploy the AutoAD and wait till ready before moving forward
+$response=DeployAutoAD -vm_cluster_name $vm_cluster_name -AutoAD $AutoAD
+Write-Output $response
+
+# Deploy the CentOS and Windows 2016 templates
+$templates=@('Windows2016','CentOS')
+foreach($template in $templates){
+    $response=DeployVMTemplate -vm_cluster_name $vm_cluster_name -templ_name $template
+    write-output $response
+}
+#>
+# Deploying the WinToolsVM 1) Upload into Content Libarary; 2) Deploy the VM
+$response=UploadImage -image 'esxi_ovas/WinTools-AHV.ova' -nfs_host $nfs_host
+Write-Output $response
+
+$response=DeployWinToolsVM -vm_cluster_name $vm_cluster_name
+write-output $response
 
 # Disconnecting from the vCenter
 $response=DisconnectvCenter
