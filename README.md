@@ -41,7 +41,7 @@ As we have dependencies on VMware and some other for manipulating Linux machines
 
 Follow these steps to get the staging running:
 
-1. Run **git pull <https://github.com/wessenstam/esxi_stageworkshop>** to pull the script and needed information
+1. Run **git Clone <https://github.com/wessenstam/esxi_stageworkshop>** to pull the script and needed information
 2. CD into the location where the GitHub Repo has been pulled
 3. Create a file named **environment.env** with the needed parameters. These parameters are *PE password,IP address of the PE instance* **example; ThisisSecret,10.10.10.10**
 4. Save the file
@@ -49,7 +49,7 @@ Follow these steps to get the staging running:
    After you have installed Docker, you can use the following command to run the script:
 
    ```bash
-   docker run --rm -it -v ${PWD}:/script wessenstam/esxi_stage pwsh /script/stage_esxi.ps1
+   docker run --rm -it -v "${PWD}":/script wessenstam/esxi_stage pwsh /script/stage_esxi.ps1
    ```
 
    Where:
