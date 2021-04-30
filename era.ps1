@@ -95,11 +95,11 @@ Write-Output $response
 Write-Output "*************************************************"
 Write-Output "Concentrating on VMware environment ($VCENTER).."
 Write-Output "*************************************************"
-
+#>
 # Connect to vCenter
 $response=ConnectVMware -vcenter $VCENTER -password $password
 write-output $response
-
+<#
 #Enable DRS and disable Admission control
 $response=EnableDRSDisableAdmissionContol -vcenter $VCENTER -password $password
 write-output $response
@@ -127,16 +127,16 @@ Write-Output $response
 # Deploy the WinTools-VM
 $response=DeployWinToolsVM -vm_cluster_name $vm_cluster_name
 Write-Output $response
-
+#>
 # Deploy Era
-$response=DeployEra -vm_cluster_name $vm_cluster_name
+$response=DeployEraVM -vm_cluster_name $vm_cluster_name
 Write-Output $response
 
 # Disconnecting from the vCenter
 $response=DisconnectvCenter
 write-output $response
 
-#>
+<#
 Write-Output "*************************************************"
 Write-Output "Concentrating on Nutanix PE environment ($cluster_name).."
 Write-Output "*************************************************"
@@ -153,7 +153,7 @@ Write-Output $response
 $response=DeployPC -IP $PE_IP -AutoAD $AutoAD -Header $Header_NTNX_Creds -PC_IP $PC_IP -GW $GW
 write-output $response
 
-
+#>
 Write-Output "*************************************************"
 Write-Output "Concentrating on Nutanix PC environment.."
 Write-Output "*************************************************"
