@@ -10,11 +10,16 @@ Below is still in scaffolding!!! Nothing is yet GA!!
 
 Below items are NOT YET in the script:
 
-- Full LCM cycle
-- Add VMware as a provider for Calm
-- Create Projects
-- Create PC Admin and role
-- Deploy and configure Era
+- Upload of Blueprints for:
+   - Calm workshop
+   - CI/CD workshop
+
+- For Era workshop:
+   - MSSQL server
+   - Oracle server
+
+- Need to make more users for the workshops. Now all is deployed for one user
+   > Using clones this can be solved as a workaround
 
 ## High level description
 
@@ -31,17 +36,24 @@ As ESXi not supports the same Nutanix products as AHV, this staging script will 
 
 ## Staging requirements
 
-As we have dependencies on VMware and some other for manipulating Linux machines, the script is built in PowerShell/PowerCLI. For the execution of the script, we are using a special build Docker container. The basis of the container has been the vmware/powercli Docker container version, too which small edits have been made so it can function for the ESXi Staging. This means that Docker has to be installed and running on your machine. There are a lot of articles on how to install Docker on your O/S. Follow this article to install Docker for your O/S <https://docs.docker.com/get-docker/>.
+As we have dependencies on VMware and some other for manipulating Linux machines, the script is built in PowerShell/PowerCLI. For the execution of the script, we are using a special build Docker container. The basis of the container has been the vmware/powercli Docker container version, too which small edits have been made so it can function for the ESXi Staging. This means that **Docker has to be installed and running on your machine**. There are a lot of articles on how to install Docker on your O/S. Follow this article to install Docker for your O/S <https://docs.docker.com/get-docker/>.
 
 > If you want to know more on the container, please read this <https://github.com/vmware/powerclicore>.
 
-> Two packages have been added to the container. These packages are ssh and sshpass. This makes it possible to use SSH with username and password to manipulate Linux based machines. The script is using it to manipulate the Era instance for setting its static IP Address. Besides the extra packages the example scripts have been removed from the container. How the container is build, please consult the Dockerfile in the vmware-powercli folder in the Repo.  
+> Two packages have been added to the container. These packages are **openssh-clients** and **sshpass**. This makes it possible to use SSH with username and password to manipulate Linux based machines. The script is using it to manipulate the Era instance for setting its static IP Address. Besides the extra packages the example scripts have been removed from the container. How the container is build, please consult the Dockerfile in the vmware-powercli folder in the Repo.  
 
 ## Usage
 
-Follow these steps to get the staging running:
+During the reservation of your cluster make sure you select the following:
 
-1. Run **git clone <https://github.com/wessenstam/esxi_stageworkshop>** to pull the script and needed information
+- Select the ESXi 6.5U1 as the hypervisor
+- Use AOS 5.19.1
+- Leave all other option, maybe change the password, default
+- Reserve your cluster
+
+After it's your time to use the cluster, follow these steps to get the staging running:
+
+1. Run **git Clone <https://github.com/wessenstam/esxi_stageworkshop>** to pull the script and needed information
 2. CD into the location where the GitHub Repo has been pulled
 3. Create a file named **environment.env** with the needed parameters. These parameters are *PE password,IP address of the PE instance* **example; ThisisSecret,10.10.10.10**
 4. Save the file
