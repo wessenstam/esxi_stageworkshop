@@ -61,7 +61,7 @@ After it's your time to use the cluster, follow these steps to get the staging r
    After you have installed Docker, you can use the following command to run the script:
 
    ```bash
-   docker run --rm -it -v "${PWD}":/script wessenstam/esxi_stage pwsh /script/stage_esxi.ps1
+   docker run --rm -it -v "${PWD}":/script wessenstam/esxi_stage pwsh /script/SCRIPTNAME.ps1
    ```
 
    Where:
@@ -70,7 +70,15 @@ After it's your time to use the cluster, follow these steps to get the staging r
    - -it; run in interactive mode, show the console output of the script
    - -v; "mount" the following path **${PWD}** (current directory) to the **/script** directory INSIDE the container
    - wessenstam/esx_staging; the name of the container image that is going to be run. It will be downloaded automatically if it doesn't exist on the machine.
-   - /script/stage_esxi.ps1; the name of the script including the location **INSIDE** the container. As we have mounted, using the **-v** parameter, the location on the machine that holds the script file to /script in the container, the container needs to be told the absolute full path.
+   - /script/**SCRIPTNAME**.ps1; the name of the script including the location **INSIDE** the container. As we have mounted, using the **-v** parameter, the location on the machine that holds the script file to /script in the container, the container needs to be told the absolute full path.
+
+   The following scripts are available:
+
+   1. **private_cloud.sp1**; for Private cloud workshops with PE and PC configured
+   2. **consolidated_storage.ps1**; For File server, File server manager and Objects workshops with PE and PC configured
+   3. **calm.ps1**; for Calm workshop with PE and PC configured
+   4. **era.ps1**; for Era related workshops with PE and PC configured
+   5. **cicd.psq**; for CI/CD related workshop where PE, PC and Calm are configured
 
 ## Detailed run
 
