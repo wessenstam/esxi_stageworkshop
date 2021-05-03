@@ -117,7 +117,7 @@ Write-Output "Uploading needed images"
 New-ContentLibrary -Name "deploy" -Datastore "Images" | Out-Null
 
 # Upload needed images
-$images=@('esxi_ovas/AutoAD_Sysprep.ova','esxi_ovas/CentOS.ova','esxi_ovas/WinTools-AHV.ova')
+$images=@('esxi_ovas/AutoAD_Sysprep.ova','esxi_ovas/CentOS.ova','esxi_ovas/ERA-Server-build-2.1.1.2.ova','esxi_ovas/WinTools-AHV.ova')
 foreach($image in $images){
     $response=UploadImage -image $image -nfs_host $nfs_host
     Write-Output $response
