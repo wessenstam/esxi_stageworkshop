@@ -10,60 +10,6 @@ function testobj{
     return $text
 }
 
-# Enable Objects (PC)
-Function EnableObjects{
-
-    param(
-        [string] $IP,
-        [object] $Header  
-    )
-
-    # Enable Objects
-
-    $APIParams = @{
-        method="POST"
-        Body='{"state":"ENABLE"}'
-        Uri="https://$($IP):9440/api/nutanix/v3/services/oss"
-        ContentType="application/json"
-        Header = $Header
-    } 
-    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
-
-    # Check if the Objects have been enabled
-    $APIParams = @{
-        method="POST"
-        Body='{"entity_type":"objectstore"}'
-        Uri="https://$($IP):9440/oss/api/nutanix/v3/groups"
-        ContentType="application/json"
-        Header = $Header
-    } 
-    try{
-        $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).total_group_count
-    }catch{
-        sleep 120
-        $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).total_group_count
-    }
-
-    # Run a short waitloop before moving on
-
-    $counter=1
-    while ($response -lt 1){
-        Write-Host "Objects not yet ready to be used. Waiting 10 seconds before retry ($counter/30)"
-        Start-Sleep 10
-        if ($counter -eq 30){
-            Write-Host "We waited for five minutes and Objects didn't become enabled."
-            break
-        }
-        $counter++
-        $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).total_group_count
-    }
-    if ($counter -eq 30){
-        return "Objects has not been enabled. Please use the UI.."
-    }else{
-        return "Objects has been enabled"
-    }
-}
-
 # Add an Objects store to the cluster (PC)
 Function CreateObjects{
     param(

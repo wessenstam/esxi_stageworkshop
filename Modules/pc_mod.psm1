@@ -39,39 +39,6 @@ Function ResetPCPassword{
     }
 }
 
-# Add NTP servers
-Function PCAddNTPServers{
-    param(
-        [string] $IP,
-        [object] $Header
-    )
-    Write-Host "Adding NTP Servers"
-    foreach ($ntp in (1,2,3)){
-        if ($ntp -ne $null){
-            $APIParams = @{
-                method="POST"
-                Body='[{"hostname":"'+$ntp+'.pool.ntp.org"}]'
-                Uri="https://$($IP):9440/PrismGateway/services/rest/v1/cluster/ntp_servers/add_list"
-                ContentType="application/json"
-                Header = $Header
-            } 
-            $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).value
-            if ($response = "True"){
-                Write-Host "NTP Server $ntp.pool.ntp.org added"
-                $Fail="No"
-            }else{
-                Write-Host "NTP Server $ntp.pool.ntp.org not added"
-                $Fail="Yes"
-            }
-        }
-    }
-    if ($Fail -Match "Yes"){
-        return "All NTP servers have been added to PC"
-    }else{
-        return "Issues have risen during the adding of the NTP Servers to PC"
-    }
-}
-
 # LCM run inventory and upgrade all, except PC and NCC
 Function PCLCMRun{
     param(
@@ -206,5 +173,191 @@ Function PCLCMRun{
         }else{
             return "LCM Ran successfully"
         }
+    }
+}
+
+# Enable Calm
+Function EnableCalm{
+    param(
+        [string] $IP,
+        [object] $Header
+    )
+    $APIParams = @{
+        method="POST"
+        Body='{"enable_nutanix_apps":true,"state":"ENABLE"}'
+        Uri="https://$($IP):9440/api/nutanix/v3/services/nucalm"
+        ContentType="application/json"
+        Header = $Header
+    } 
+    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).state
+
+    # Sometimes the enabling of Calm is stuck due to an internal error. Need to retry then.
+
+    while ($response -Match "ERROR"){
+        $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).state
+    }
+
+    # Check if Calm is enabled
+
+    $APIParams = @{
+        method="GET"
+        Uri="https://$($IP):9440/api/nutanix/v3/services/nucalm/status"
+        ContentType="application/json"
+        Header = $Header
+    } 
+    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).service_enablement_status
+    while ($response -NotMatch "ENABLED"){
+        Start-Sleep 60
+        $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).service_enablement_status
+    }
+    Start-Sleep 60
+    Return "Calm has been enabled"
+}
+
+# Enable Objects
+Function EnableObjects{
+    param(
+        [string] $IP,
+        [object] $Header
+    )
+
+    Write-Host "Enabling Objects"
+    $APIParams = @{
+        method="POST"
+        Body='{"state":"ENABLE"}'
+        Uri="https://$($IP):9440/api/nutanix/v3/services/oss"
+        ContentType="application/json"
+        Header = $Header
+    } 
+    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+
+    # Check if the Objects have been enabled
+    $APIParams = @{
+        method="POST"
+        Body='{"entity_type":"objectstore"}'
+        Uri="https://$($IP):9440/oss/api/nutanix/v3/groups"
+        ContentType="application/json"
+        Header = $Header
+    } 
+    try{
+        $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).total_group_count
+    }catch{
+        sleep 120
+        $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).total_group_count
+    }
+
+    # Run a short waitloop before moving on
+
+    $counter=1
+    while ($response -lt 1){
+        Write-Host "Objects not yet ready to be used. Waiting 10 seconds before retry ($counter/30)"
+        Start-Sleep 10
+        if ($counter -eq 30){
+            break
+        }
+        $counter++
+        $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).total_group_count
+    }
+    if ($counter -eq 30){
+        return "Objects has not been enabled. Please use the UI.."
+    }else{
+        return "Objects has been enabled"
+    }
+}
+
+# Enable Leap
+Function EnableLeap{
+    param(
+        [string] $IP,
+        [object] $Header
+    )
+    Write-Host "Checking if Leap can be enabled"
+
+    # Check if the Objects have been enabled
+
+    $APIParams = @{
+        method="GET"
+        Uri="https://$($IP):9440/api/nutanix/v3/services/disaster_recovery/status?include_capabilities=true"
+        ContentType="application/json"
+        Header = $Header
+    } 
+    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).service_capabilities.can_enable.state
+    if ($response -eq $true){
+        Write-Host "Leap can be enabled, so progressing."
+        $APIParams = @{
+            method="POST"
+            Body='{"state":"ENABLE"}'
+            Uri="https://$($IP):9440/api/nutanix/v3/services/disaster_recovery"
+            ContentType="application/json"
+            Header = $Header
+        } 
+        $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).task_uuid
+        # We have been given a task uuid, so need to check if SUCCEEDED as status
+        $APIParams = @{
+            method="GET"
+            Uri="https://$($IP):9440/api/nutanix/v3/tasks/"+$response
+            ContentType="application/json"
+            Header = $Header
+        } 
+        $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).status
+        # Loop for 2 minutes so we can check the task being run successfuly
+        if ($response -NotMatch "SUCCEEDED"){
+            $counter=1
+            while ($response -NotMatch "SUCCEEDED"){
+                Start-Sleep 10
+                $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).status
+                if ($counter -eq 12){
+                    return "Waited two minutes and Leap didn't get enabled! Please check the PC UI for the reason."
+                }else{
+                    return "Leap has been enabled"
+                }
+            }
+        }else{
+            return "Leap has been enabled"
+        }
+    }else{
+        return "Leap can not be enabled! Please check the PC UI for the reason."
+    }
+}
+
+# Enable File Server manager
+Function EnableFileServerMGR{
+    param(
+        [string] $IP,
+        [object] $Header
+    )
+    Write-Host "Enabling File Server Manager"
+    $APIParams = @{
+        method="POST"
+        Body='{"state":"ENABLE"}'
+        Uri="https://$($IP):9440/api/nutanix/v3/services/files_manager"
+        ContentType="application/json"
+        Header = $Header
+    } 
+    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+
+    # We have started the enablement of the file server manager, let's wait till it's ready
+    $APIParams = @{
+        method="GET"
+        Uri="https://$($IP):9440/api/nutanix/v3/services/files_manager/status"
+        ContentType="application/json"
+        Header = $Header
+    } 
+    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).service_enablement_status
+    # Loop for 2 minutes so we can check the task being run successfuly
+    if ($response -NotMatch "ENABLED"){
+        $counter=1
+        while ($response -NotMatch "ENABLED"){
+            Start-Sleep 20
+            $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).service_enablement_status
+            if ($counter -eq 6){
+                return "Waited two minutes and the Files Server Manager didn't get enabled! Please check the PC UI for the reason."
+            }else{
+                return "Files Server Manager not yet enabled. Retrying in 20 seconds"
+            }
+            $counter++
+        }
+    }else{
+        return "Files Server Manager has been enabled"
     }
 }

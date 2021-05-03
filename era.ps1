@@ -59,7 +59,7 @@ $Header_NTNX_PC_temp_creds=@{"Authorization" = "Basic "+[System.Convert]::ToBase
 
 # Get PE's Clustername
 $cluster_name=GetClustername -IP $PE_IP -Header $Header_NTNX_Creds
-<#
+
 Write-Output "*************************************************"
 Write-Output "Concentrating on Nutanix PE environment ($cluster_name).."
 Write-Output "*************************************************"
@@ -74,6 +74,10 @@ Write-Output $response
 
 # Disable Pulse
 $response=DisablePulse -IP $PE_IP  -Header $Header_NTNX_Creds
+Write-Output $response
+
+# Add NTP servers to PE
+$response=AddNTPServers -IP $PE_IP -Header $Header_NTNX_Creds
 Write-Output $response
 
 # Change the default SP Name to Sp1
@@ -148,11 +152,15 @@ Write-Output $response
 # Role mapping between PE and AD
 $response=RoleMapPEtoAD -IP $PE_IP -Header $Header_NTNX_Creds
 Write-Output $response
-#>
+
 # Deploy PC
 $response=DeployPC -IP $PE_IP -AutoAD $AutoAD -Header $Header_NTNX_Creds -PC_IP $PC_IP -GW $GW
 write-output $response
 
+
+# Check PE registered to PC
+$response=PERegistered -IP $PE_IP -Header $Header_NTNX_Creds
+Write-Output $response
 
 Write-Output "*************************************************"
 Write-Output "Concentrating on Nutanix PC environment.."
@@ -179,7 +187,7 @@ $response=RoleMapPEtoAD -IP $PC_IP -Header $Header_NTNX_Creds
 Write-Output $response
 
 # Add NTP servers to PC
-$response=PCAddNTPServers -IP $PC_IP -Header $Header_NTNX_Creds
+$response=AddNTPServers -IP $PC_IP -Header $Header_NTNX_Creds
 Write-Output $response
 
 # Run LCM to update all enabled modules except NCC and PC themself
@@ -199,7 +207,7 @@ $response=EraComputeProfiles -Era_IP $Era_IP -Header $Header_NTNX_Creds
 Write-Output $response
 
 # Create the Domain Profile
-$response=EraDomainProfiles -Era_IP $Era_IP -Header $Header_NTNX_Creds
+$response=EraDomainProfile -Era_IP $Era_IP -Header $Header_NTNX_Creds
 Write-Output $response
 
 # Create the MariaDB Network for CICD

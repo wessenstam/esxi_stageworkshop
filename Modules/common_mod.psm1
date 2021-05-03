@@ -24,7 +24,6 @@ function GetClustername {
     return $cluster_name
 }
 
-
 # Accept the EULA
 
 function AcceptEula{
@@ -189,4 +188,37 @@ Function RoleMapPEtoAD{
         return "SSP Admins have not been added as the CLuster Admin Role"
     }
 
+}
+
+# Add NTP servers
+Function AddNTPServers{
+    param(
+        [string] $IP,
+        [object] $Header
+    )
+    Write-Host "Adding NTP Servers"
+    foreach ($ntp in (1,2,3)){
+        if ($ntp -ne $null){
+            $APIParams = @{
+                method="POST"
+                Body='[{"hostname":"'+$ntp+'.pool.ntp.org"}]'
+                Uri="https://$($IP):9440/PrismGateway/services/rest/v1/cluster/ntp_servers/add_list"
+                ContentType="application/json"
+                Header = $Header
+            } 
+            $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).value
+            if ($response = "True"){
+                Write-Host "NTP Server $ntp.pool.ntp.org added"
+                $Fail="No"
+            }else{
+                Write-Host "NTP Server $ntp.pool.ntp.org not added"
+                $Fail="Yes"
+            }
+        }
+    }
+    if ($Fail -Match "Yes"){
+        return "All NTP servers have been added to PC"
+    }else{
+        return "Issues have risen during the adding of the NTP Servers to PC"
+    }
 }

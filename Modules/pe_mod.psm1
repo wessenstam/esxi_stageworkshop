@@ -300,3 +300,33 @@ Function DeployPC{
     }
         return "PC is ready for being used. Progressing..."
 }
+
+# Check if registration was successfull of PE to PC
+Function PERegistered{
+    param(
+        [string] $IP,
+        [object] $Header
+    )
+
+    Write-Host "Checking if PE has been registred to PC"
+    $APIParams = @{
+    method="GET"
+    Uri="https://$($IP):9440/PrismGateway/services/rest/v1/multicluster/cluster_external_state"
+    ContentType="application/json"
+    Body=$Payload
+    Header = $Header
+    }
+    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+    $count=1
+    while ($response.clusterDetails.ipAddresses -eq $null){
+        Write-Host "PE is not yet registered to PC. Waiting a bit more.."
+        $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+        Start-Sleep 60
+        if ($count -gt 10){
+            Write-Host "Waited for 10 minutes. Giving up. Exiting the script."
+            exit 3
+        }
+        $count++
+    }
+    return "PE has been registered to PC. Progressing..."
+}

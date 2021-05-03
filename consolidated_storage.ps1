@@ -15,6 +15,8 @@ Import-Module $module_dir/common_mod.psm1
 Import-Module $module_dir/pe_mod.psm1
 Import-Module $module_dir/pc_mod.psm1
 Import-Module $module_dir/vmware_mod.psm1
+Import-Module $module_dir/fileserver_mod.psm1
+Import-Module $module_dir/objects_mod.psm1
 
 # **********************************************************************************
 # Setting the needed variables
@@ -117,7 +119,7 @@ Write-Output "Uploading needed images"
 New-ContentLibrary -Name "deploy" -Datastore "Images" | Out-Null
 
 # Upload needed images
-$images=@('esxi_ovas/AutoAD_Sysprep.ova','esxi_ovas/CentOS.ova','esxi_ovas/Windows2016.ova')
+$images=@('esxi_ovas/AutoAD_Sysprep.ova','esxi_ovas/CentOS.ova','esxi_ovas/Windows2016.ova','esxi_ovas/WinTools-AHV.ova')
 foreach($image in $images){
     $response=UploadImage -image $image -nfs_host $nfs_host
     Write-Output $response
@@ -133,6 +135,10 @@ foreach($template in $templates){
     $response=DeployVMTemplate -vm_cluster_name $vm_cluster_name -templ_name $template
     write-output $response
 }
+
+# Deploy the WinTools-VM
+$response=DeployWinToolsVM -vm_cluster_name $vm_cluster_name
+Write-Output $response
 
 # Disconnecting from the vCenter
 $response=DisconnectvCenter
@@ -151,15 +157,20 @@ Write-Output $response
 $response=RoleMapPEtoAD -IP $PE_IP -Header $Header_NTNX_Creds
 Write-Output $response
 
+# Deploy Fileserver
+$response=DownloadDeployFS -IP $PE_IP -Header $Header_NTNX_Creds
+Write-Output $response
+
+# Deploy File server Analytics
+$response=DeployFSAnalytics -IP $PE_IP -Header $Header_NTNX_Creds
+
 # Deploy PC
 $response=DeployPC -IP $PE_IP -AutoAD $AutoAD -Header $Header_NTNX_Creds -PC_IP $PC_IP -GW $GW
 write-output $response
 
-
 # Check PE registered to PC
 $response=PERegistered -IP $PE_IP -Header $Header_NTNX_Creds
 Write-Output $response
-
 
 Write-Output "*************************************************"
 Write-Output "Concentrating on Nutanix PC environment.."
@@ -189,9 +200,22 @@ Write-Output $response
 $response=AddNTPServers -IP $PC_IP -Header $Header_NTNX_Creds
 Write-Output $response
 
+# Enable the File Server Manager
+$response=EnableFileServerMGR -IP $PC_IP -Header $Header_NTNX_Creds
+Write-Output $response
+
+# Enable Objects
+$response=EnableObjects -IP $PC_IP -Header $Header_NTNX_Creds
+Write-Output $response
+
 # Run LCM to update all enabled modules except NCC and PC themself
 $response=PCLCMRun -IP $PC_IP -Header $Header_NTNX_Creds
 Write-Output $response
+
+# Create ObjectsStore
+$response=CreateObjects -IP $PC_IP -Header $Header_NTNX_Creds -password $password -VCENTER $VCENTER -AutoAD $AutoAD -ip_subnet $ip_subnet
+Write-Output $response
+
 
 Write-Output "*************************************************"
 Write-Output "All steps done for Public Cloud bootcamp"
@@ -203,3 +227,4 @@ remove-module common_mod
 remove-module pe_mod
 remove-module pc_mod
 remove-module vmware_mod
+remove-module fileserver_mod

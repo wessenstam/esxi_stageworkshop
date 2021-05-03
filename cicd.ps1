@@ -15,7 +15,6 @@ Import-Module $module_dir/common_mod.psm1
 Import-Module $module_dir/pe_mod.psm1
 Import-Module $module_dir/pc_mod.psm1
 Import-Module $module_dir/vmware_mod.psm1
-Import-Module $module_dir/fileserver_mod.psm1
 
 # **********************************************************************************
 # Setting the needed variables
@@ -76,6 +75,10 @@ Write-Output $response
 $response=DisablePulse -IP $PE_IP  -Header $Header_NTNX_Creds
 Write-Output $response
 
+# Add NTP servers to PE
+$response=AddNTPServers -IP $PE_IP -Header $Header_NTNX_Creds
+Write-Output $response
+
 # Change the default SP Name to Sp1
 $response=ChangeSPName -IP $PE_IP  -Header $Header_NTNX_Creds
 Write-Output $response
@@ -114,7 +117,7 @@ Write-Output "Uploading needed images"
 New-ContentLibrary -Name "deploy" -Datastore "Images" | Out-Null
 
 # Upload needed images
-$images=@('esxi_ovas/AutoAD_Sysprep.ova','esxi_ovas/CentOS.ova','esxi_ovas/Windows2016.ova')
+$images=@('esxi_ovas/AutoAD_Sysprep.ova','esxi_ovas/CentOS.ova','esxi_ovas/WinTools-AHV')
 foreach($image in $images){
     $response=UploadImage -image $image -nfs_host $nfs_host
     Write-Output $response
@@ -124,12 +127,20 @@ foreach($image in $images){
 $response=DeployAutoAD -vm_cluster_name $vm_cluster_name -AutoAD $AutoAD
 Write-Output $response
 
-# Deploy the CentOS and Windows 2016 templates
-$templates=@('Windows2016','CentOS')
+# Deploy the CentOS templates
+$templates=@('CentOS')
 foreach($template in $templates){
     $response=DeployVMTemplate -vm_cluster_name $vm_cluster_name -templ_name $template
     write-output $response
 }
+
+# Deploy the WinTools-VM
+$response=DeployWinToolsVM -vm_cluster_name $vm_cluster_name
+Write-Output $response
+
+# Deploy Era
+$response=DeployEraVM -vm_cluster_name $vm_cluster_name
+Write-Output $response
 
 # Disconnecting from the vCenter
 $response=DisconnectvCenter
@@ -148,16 +159,14 @@ Write-Output $response
 $response=RoleMapPEtoAD -IP $PE_IP -Header $Header_NTNX_Creds
 Write-Output $response
 
-# Deploy Fileserver
-$response=DownloadDeployFS -IP $PE_IP -Header $Header_NTNX_Creds
-Write-Output $response
-
-# Deploy File server Analytics
-$response=DeployFSAnalytics -IP $PE_IP -Header $Header_NTNX_Creds
-
 # Deploy PC
 $response=DeployPC -IP $PE_IP -AutoAD $AutoAD -Header $Header_NTNX_Creds -PC_IP $PC_IP -GW $GW
 write-output $response
+
+
+# Check PE registered to PC
+$response=PERegistered -IP $PE_IP -Header $Header_NTNX_Creds
+Write-Output $response
 
 
 Write-Output "*************************************************"
@@ -185,16 +194,35 @@ $response=RoleMapPEtoAD -IP $PC_IP -Header $Header_NTNX_Creds
 Write-Output $response
 
 # Add NTP servers to PC
-$response=PCAddNTPServers -IP $PC_IP -Header $Header_NTNX_Creds
+$response=AddNTPServers -IP $PC_IP -Header $Header_NTNX_Creds
 Write-Output $response
 
-# Enable the File Server Manager
-$response=EnableFileServerMGR -IP $PC_IP -Header $Header_NTNX_Creds
+# Enable Calm
+$response=EnableCalm -IP $PC_IP -Header $Header_NTNX_Creds
 Write-Output $response
-
 
 # Run LCM to update all enabled modules except NCC and PC themself
 $response=PCLCMRun -IP $PC_IP -Header $Header_NTNX_Creds
+Write-Output $response
+
+Write-Output "*************************************************"
+Write-Output "Configuring Era"
+Write-Output "*************************************************"
+
+# Default Era configuration
+$response=ConfigBasicEra -IP $PC_IP -Header $Header_NTNX_Creds -Header_Temp $Header_NTNX_PC_temp_creds -Era_IP $Era_IP -ip_subnet $ip_subnet -AutoAD $AutoAD -password $password -PE_IP $PE_IP
+Write-Output $response
+
+# Create the Compute Profiles
+$response=EraComputeProfiles -Era_IP $Era_IP -Header $Header_NTNX_Creds
+Write-Output $response
+
+# Create the Domain Profile
+$response=EraDomainProfile -Era_IP $Era_IP -Header $Header_NTNX_Creds
+Write-Output $response
+
+# Create the MariaDB Network for CICD
+$response=EraMariaDBNetwork -Era_IP $Era_IP -Header $Header_NTNX_Creds
 Write-Output $response
 
 Write-Output "*************************************************"
