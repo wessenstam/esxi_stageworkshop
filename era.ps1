@@ -59,7 +59,7 @@ $Header_NTNX_PC_temp_creds=@{"Authorization" = "Basic "+[System.Convert]::ToBase
 
 # Get PE's Clustername
 $cluster_name=GetClustername -IP $PE_IP -Header $Header_NTNX_Creds
-
+<#
 Write-Output "*************************************************"
 Write-Output "Concentrating on Nutanix PE environment ($cluster_name).."
 Write-Output "*************************************************"
@@ -148,7 +148,7 @@ Write-Output $response
 # Role mapping between PE and AD
 $response=RoleMapPEtoAD -IP $PE_IP -Header $Header_NTNX_Creds
 Write-Output $response
-
+#>
 # Deploy PC
 $response=DeployPC -IP $PE_IP -AutoAD $AutoAD -Header $Header_NTNX_Creds -PC_IP $PC_IP -GW $GW
 write-output $response
