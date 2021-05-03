@@ -52,11 +52,18 @@ Function ConfigBasicEra{
     }
     $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
     $era_temp_ip=($response.group_results.entity_results.data | where-object {$_.name -Match "ip_addresses"}).values.values
+    $counter=0
     while ($era_temp_ip -eq $null){
         Write-Host "VM is still not up. Waiting 60 seconds before retrying.."
         Start-Sleep 60
-        $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
-        $era_temp_ip=($response.group_results.entity_results.data | where-object {$_.name -Match "ip_addresses"}).values.values
+        if ($counter -eq 30){
+            Write-Host "Era VM not started witin 30 minutes. Exiting script"
+            exit 1
+        }else{
+            $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+            $era_temp_ip=($response.group_results.entity_results.data | where-object {$_.name -Match "ip_addresses"}).values.values
+            $counter++
+        }
     }
 
     # Now that we have the IP address of the era server, we need to check if Era is up and running
