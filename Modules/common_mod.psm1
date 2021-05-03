@@ -216,7 +216,7 @@ Function AddNTPServers{
             }
         }
     }
-    if ($Fail -Match "Yes"){
+    if ($Fail -Match "No"){
         return "All NTP servers have been added to PC"
     }else{
         return "Issues have risen during the adding of the NTP Servers to PC"
