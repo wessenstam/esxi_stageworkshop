@@ -74,11 +74,11 @@ After it's your time to use the cluster, follow these steps to get the staging r
 
    The following scripts are available:
 
-   1. **private_cloud.sp1**; for Private cloud workshops with PE and PC configured
+   1. **private_cloud.ps1**; for Private cloud workshops with PE and PC configured
    2. **consolidated_storage.ps1**; For File server, File server manager and Objects workshops with PE and PC configured
    3. **calm.ps1**; for Calm workshop with PE and PC configured
    4. **era.ps1**; for Era related workshops with PE and PC configured
-   5. **cicd.psq**; for CI/CD related workshop where PE, PC and Calm are configured
+   5. **cicd.ps1**; for CI/CD related workshop where PE, PC and Calm are configured
 
 ## Detailed run
 
