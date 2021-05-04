@@ -105,7 +105,7 @@ Function PCLCMRun{
         try{
             [array]$version = (($response.data.entities | where-object {$_.uuid -eq $uuids[$count]}).available_version_list.version | sort-object)
             $software=($response.data.entities | where-object {$_.uuid -eq $uuids[$count]}).entity_model
-            if ($software -NotMatch "PC" -And $software -NotMatch "NCC"){ # Remove PC and NCC from the upgrade list
+            if ($software -NotMatch "NCC"){ # Remove NCC from the upgrade list
                 [array]$updates += $software+","+$uuid+","+$version[-1]
             }
         }catch{
@@ -121,7 +121,6 @@ Function PCLCMRun{
         }
     }
     $json_payload_lcm = $json_payload_lcm.subString(0,$json_payload_lcm.length-1) +']'
-
     # Can we update?
     $APIParams = @{
         method="POST"
@@ -160,16 +159,16 @@ Function PCLCMRun{
         # Loop for 2 minutes so we can check the task being run successfuly
         $counter=1
         while ($response -NotMatch "SUCCEEDED"){
-            Write-Host "LCM Upgrade still running ($counter/45 mins)...Retrying in 1 minute."
+            Write-Host "LCM Upgrade still running ($counter/60 mins)...Retrying in 1 minute."
             Start-Sleep 60
             $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).status
-            if ($counter -eq 45){
+            if ($counter -eq 60){
                 break
             }
             $counter ++
         }
-        if ($counter -eq 45){
-            return "Waited 45 minutes and LCM didn't finish the updates! Please check the PC UI for the reason."
+        if ($counter -eq 60){
+            return "Waited 60 minutes and LCM didn't finish the updates! Please check the PC UI for the reason."
         }else{
             return "LCM Ran successfully"
         }
