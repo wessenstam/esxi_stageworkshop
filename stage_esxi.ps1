@@ -1229,60 +1229,6 @@ if ($response -eq $true){
 Write-Output "--------------------------------------"
 
 # **********************************************************************************
-# Enable Karbon
-# **********************************************************************************
-Write-Output "Enabling Karbon"
-
-$Payload_en='{"value":"{\".oid\":\"ClusterManager\",\".method\":\"enable_service_with_prechecks\",\".kwargs\":{\"service_list_json\":\"{\\\"service_list\\\":[\\\"KarbonUIService\\\",\\\"KarbonCoreService\\\"]}\"}}"}'
-$Payload_chk='{"value":"{\".oid\":\"ClusterManager\",\".method\":\"is_service_enabled\",\".kwargs\":{\"service_name\":\"KarbonUIService\"}}"}'
-
-# Enable Karbon
-
-$APIParams = @{
-    method="POST"
-    Body=$Payload_en
-    Uri="https://"+$PC_IP+":9440/PrismGateway/services/rest/v1/genesis"
-    ContentType="application/json"
-    Header = $Header_NTNX_Creds
-} 
-$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
-if ($response.value -Match "true"){
-    Write-Output "Enable Karbon command has been received. Waiting for karbon to be ready"
-}else{
-    Write-Output "Retrying enablening Karbon one more time"
-    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
-    Start-Sleep 10
-}
-
-# Checking if Karbon has been enabled
-
-$APIParams = @{
-    method="POST"
-    Body=$Payload_chk
-    Uri="https://"+$PC_IP+":9440/PrismGateway/services/rest/v1/genesis"
-    ContentType="application/json"
-    Header = $Header_NTNX_Creds
-} 
-$response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
-$counter=1
-while ($response.value -NotMatch "true"){
-    Write-Output "Karbon is not ready"
-    Start-Sleep 10
-    if ($counter -eq 12){
-        Write-Output "We tried for 2 minutes and Karbon is still not enabled."
-        break
-    }
-    $counter++
-}
-if ($counter -eq 12){
-    Write-Output "Please use the UI to enable Karbon"
-}else{
-    Write-Output "Karbon has been enabled"
-}
-
-Write-Output "--------------------------------------"
-
-# **********************************************************************************
 # Enable File Server manager
 # **********************************************************************************
 
@@ -1384,7 +1330,7 @@ foreach ($uuid in $uuids){
     try{
         [array]$version = (($response.data.entities | where-object {$_.uuid -eq $uuids[$count]}).available_version_list.version | sort-object)
         $software=($response.data.entities | where-object {$_.uuid -eq $uuids[$count]}).entity_model
-        if ($software -NotMatch "PC" -And $software -NotMatch "NCC"){ # Remove PC and NCC from the upgrade list
+        if ($software -NotMatch "NCC"){ # Remove NCC from the upgrade list
             [array]$updates += $software+","+$uuid+","+$version[-1]
         }
     }catch{
@@ -1439,16 +1385,16 @@ if ($response.data.upgrade_plan.to_version.length -lt 1){
     # Loop for 2 minutes so we can check the task being run successfuly
     $counter=1
     while ($response -NotMatch "SUCCEEDED"){
-        write-output "LCM Upgrade still running ($counter/45 mins)...Retrying in 1 minute."
+        write-output "LCM Upgrade still running ($counter/60 mins)...Retrying in 1 minute."
         Start-Sleep 60
         $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).status
-        if ($counter -eq 45){
+        if ($counter -eq 60){
             break
         }
         $counter ++
     }
-    if ($counter -eq 45){
-        Write-Output "Waited 45 minutes and LCM didn't finish the updates! Please check the PC UI for the reason."
+    if ($counter -eq 60){
+        Write-Output "Waited 60 minutes and LCM didn't finish the updates! Please check the PC UI for the reason."
     }else{
         Write-Output "LCM Ran successfully"
     }
