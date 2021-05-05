@@ -208,9 +208,8 @@ Function DeployPC{
         ContentType="application/json"
         Header = $Header
     } 
-    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).entities | where-object {$_.name -match "vmContainer1"}
-    $cntr_uuid=$response.storage_container_uuid
-
+    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+    $cntr_uuid=($response.entities | where-object {$_.name -Match "vmContainer1"}).storage_container_uuid
 
     # Get the Network UUID as we need it before we can deploy PC
 
@@ -221,41 +220,57 @@ Function DeployPC{
     Body=$Payload
     Header = $Header
     }
-    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).entities | where-object {$_.name -match "VM Network"}
-    $network_uuid=$response.uuid
-
-
-    $Payload=@"
-    {
-        "resources":{
-            "version":"pc.2021.1.0.1",
-            "should_auto_register":true,
-            "pc_vm_list":[
-                {
-                    "vm_name":"pc-2021.1",
-                    "container_uuid":"$cntr_uuid",
-                    "num_sockets":6,
-                    "data_disk_size_bytes":536870912000,
-                    "memory_size_bytes":27917287424,
-                    "dns_server_ip_list":[
-                        "$AutoAD"
-                    ],
-                    "nic_list":[
-                        {
-                            "ip_list":[
-                                "$PC_IP"
-                            ],
-                            "network_configuration":{
-                                "network_uuid":"$network_uuid",
-                                "subnet_mask":"255.255.255.128",
-                                "default_gateway":"$GW"
-                            }
-                        }
-                    ]
-                }
-            ]
+    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+    $network_uuid=($response.entities | where-object {$_.name -Match "VM Network"}).uuid
+    
+    # Get the version of PC and select the latest version
+    $APIParams = @{
+        method="GET"
+        Uri="https://$($IP):9440/PrismGateway/services/rest/v1/upgrade/prism_central_deploy/softwares"
+        ContentType="application/json"
+        Body=$Payload
+        Header = $Header_NTNX_Creds
         }
-    }
+    $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).entities
+    $version_pc=($response.name | Sort-Object)[-1]
+    
+    $name=($response | where-object {$_.name -eq $version_pc}).name
+    $version_pc_json=($response | where-object {$_.name -eq $version_pc}).version
+    $data_size=536870912000
+    $mem_size=27917287424
+    
+    # Build the deploy JSON and deploy PC using the foudn version
+    $Payload=@"
+        {
+            "resources":{
+                "version":"$version_pc_json",
+                "should_auto_register":true,
+                "pc_vm_list":[
+                    {
+                        "vm_name":"$name",
+                        "container_uuid":"$cntr_uuid",
+                        "num_sockets":6,
+                        "data_disk_size_bytes":$data_size,
+                        "memory_size_bytes":$mem_size,
+                        "dns_server_ip_list":[
+                            "$AutoAD"
+                        ],
+                        "nic_list":[
+                            {
+                                "ip_list":[
+                                    "$PC_IP"
+                                ],
+                                "network_configuration":{
+                                    "network_uuid":"$network_uuid",
+                                    "subnet_mask":"255.255.255.128",
+                                    "default_gateway":"$GW"
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
 "@
 
     $APIParams = @{

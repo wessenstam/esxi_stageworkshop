@@ -32,11 +32,12 @@ As ESXi not supports the same Nutanix products as AHV, this staging script will 
 4. Objects
 5. Era
 6. Leap
-7. Karbon
 
+> The latest version of PC will be deployed
 ## Staging requirements
 
 As we have dependencies on VMware and some other for manipulating Linux machines, the script is built in PowerShell/PowerCLI. For the execution of the script, we are using a special build Docker container. The basis of the container has been the vmware/powercli Docker container version, too which small edits have been made so it can function for the ESXi Staging. This means that **Docker has to be installed and running on your machine**. There are a lot of articles on how to install Docker on your O/S. Follow this article to install Docker for your O/S <https://docs.docker.com/get-docker/>.
+Besides docker also **git** needs to be installed on your computer and **Nutanix VPN** needs to be installed and configured.
 
 > If you want to know more on the container, please read this <https://github.com/vmware/powerclicore>.
 
@@ -47,7 +48,7 @@ As we have dependencies on VMware and some other for manipulating Linux machines
 During the reservation of your cluster make sure you select the following:
 
 - Select the ESXi 6.5U1 as the hypervisor
-- Use AOS 5.19.1
+- Use AOS 5.19.1+
 - Leave all other option, maybe change the password, default
 - Reserve your cluster
 
@@ -55,7 +56,7 @@ After it's your time to use the cluster, follow these steps to get the staging r
 
 1. Run **git Clone <https://github.com/wessenstam/esxi_stageworkshop>** to pull the script and needed information
 2. CD into the location where the GitHub Repo has been pulled
-3. Create a file named **environment.env** with the needed parameters. These parameters are *PE password,IP address of the PE instance* **example; ThisisSecret,10.10.10.10**
+3. Create a file named **environment.env** with the needed parameters and save the file in the location of the clone. These parameters are *PE password,IP address of the PE instance* **example; ThisisSecret,10.10.10.10**
 4. Save the file
 5. Run the Powershell script using the below
    After you have installed Docker, you can use the following command to run the script:

@@ -70,7 +70,7 @@ Function PCLCMRun{
 
     $counter=1
     While ($response -NotMatch "SUCCEEDED"){
-        Write-Host "Waiting for LCM inventroy to be completed ($counter/45 mins)."
+        Write-Host "Waiting for LCM inventory to be completed ($counter/45 mins)."
         Start-Sleep 60
         $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck).status
         if ($counter -eq 45){
@@ -81,7 +81,7 @@ Function PCLCMRun{
         $counter++
     }
     if ($countert -eq 45){
-        Write-Host "LCM inventory has failed"
+        return "LCM inventory has failed"
     }else{
         Write-Host "LCM Inventory has run successful. Progressing..."
     }
@@ -132,7 +132,7 @@ Function PCLCMRun{
     $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
 
     if ($response.data.upgrade_plan.to_version.length -lt 1){
-        Write-Host "LCM can not be run as there is nothing to upgrade.."
+        return "LCM can not be run as there is nothing to upgrade.."
     }else{
         Write-Host "Firing the upgrade to the LCM platform"
         $json_payload_lcm_upgrade='{"entity_update_spec_list":'+$json_payload_lcm+'}'
@@ -229,6 +229,8 @@ Function EnableObjects{
         Header = $Header
     } 
     $response=(Invoke-RestMethod @APIParams -SkipCertificateCheck)
+    
+    Start-Sleep 120
 
     # Check if the Objects have been enabled
     $APIParams = @{

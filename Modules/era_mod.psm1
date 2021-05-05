@@ -25,8 +25,6 @@ Function ConfigBasicEra{
         [string] $password,
         [string] $PE_IP
     )
-    Write-Host "Waiting 2 minutes so the VM can start and settle."
-    start-sleep 120 # Give the system to start the VM
 
     $Payload=@"
     {

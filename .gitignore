@@ -6,4 +6,5 @@
 AutoAD.ova
 *.env
 scratch-file
-HAR_dumps/*
+*.har
+.DS_Store

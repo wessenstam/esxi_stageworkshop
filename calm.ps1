@@ -15,7 +15,7 @@ Import-Module $module_dir/common_mod.psm1
 Import-Module $module_dir/pe_mod.psm1
 Import-Module $module_dir/pc_mod.psm1
 Import-Module $module_dir/vmware_mod.psm1
-Import-Module $module_dir/era_mod.psm1
+Import-Module $module_dir/calm_mod.psm1
 
 # **********************************************************************************
 # Setting the needed variables
@@ -57,7 +57,7 @@ switch ($PE_IP.Split(".")[1]){
 $Header_NTNX_Creds=@{"Authorization" = "Basic "+[System.Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes("admin:"+$password));}
 $Header_NTNX_PC_temp_creds=@{"Authorization" = "Basic "+[System.Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes("admin:Nutanix/4u"));}
 
-# Get PE's Clustername
+
 $cluster_name=GetClustername -IP $PE_IP -Header $Header_NTNX_Creds
 
 Write-Output "*************************************************"
@@ -118,10 +118,17 @@ Write-Output "Uploading needed images"
 New-ContentLibrary -Name "deploy" -Datastore "Images" | Out-Null
 
 # Upload needed images
-$images=@('esxi_ovas/AutoAD_Sysprep.ova','esxi_ovas/ERA-Server-build-2.1.1.2.ova','esxi_ovas/WinTools-AHV.ova')
+$images=@('esxi_ovas/AutoAD_Sysprep.ova','esxi_ovas/CentOS.ova','esxi_ovas/ERA-Server-build-2.1.1.2.ova','esxi_ovas/WinTools-AHV.ova')
 foreach($image in $images){
     $response=UploadImage -image $image -nfs_host $nfs_host
     Write-Output $response
+}
+
+# Deploy the CentOS templates
+$templates=@('CentOS')
+foreach($template in $templates){
+    $response=DeployVMTemplate -vm_cluster_name $vm_cluster_name -templ_name $template
+    write-output $response
 }
 
 # Deploy the WinTools-VM
@@ -139,6 +146,7 @@ Write-Output $response
 # Disconnecting from the vCenter
 $response=DisconnectvCenter
 write-output $response
+
 
 Write-Output "*************************************************"
 Write-Output "Concentrating on Nutanix PE environment ($cluster_name).."
@@ -160,6 +168,7 @@ write-output $response
 # Check PE registered to PC
 $response=PERegistered -IP $PE_IP -Header $Header_NTNX_Creds
 Write-Output $response
+
 
 Write-Output "*************************************************"
 Write-Output "Concentrating on Nutanix PC environment.."
@@ -189,32 +198,28 @@ Write-Output $response
 $response=AddNTPServers -IP $PC_IP -Header $Header_NTNX_Creds
 Write-Output $response
 
+# Enable Calm
+$response=EnableCalm -IP $PC_IP -Header $Header_NTNX_Creds
+Write-Output $response
+
 # Run LCM to update all enabled modules except NCC and PC themself
 $response=PCLCMRun -IP $PC_IP -Header $Header_NTNX_Creds
 Write-Output $response
 
-Write-Output "*************************************************"
-Write-Output "Configuring Era"
-Write-Output "*************************************************"
-
-# Default Era configuration
-$response=ConfigBasicEra -IP $PC_IP -Header $Header_NTNX_Creds -Header_Temp $Header_NTNX_PC_temp_creds -Era_IP $Era_IP -ip_subnet $ip_subnet -AutoAD $AutoAD -password $password -PE_IP $PE_IP
+# Add VMware as Provider for Calm
+$response=VMwareProviderCalm -IP $PC_IP -Header $Header_NTNX_Creds -VCENTER $VCENTER -password $password
 Write-Output $response
 
-# Create the Compute Profiles
-$response=EraComputeProfiles -Era_IP $Era_IP -Header $Header_NTNX_Creds
+# Create BootCampInfra Project
+$response=AddPRojectBootcampInfra -IP $PC_IP -Header $Header_NTNX_Creds
 Write-Output $response
 
-# Create the Domain Profile
-$response=EraDomainProfile -Era_IP $Era_IP -Header $Header_NTNX_Creds
-Write-Output $response
-
-# Create the MariaDB Network for CICD
-$response=EraMariaDBNetwork -Era_IP $Era_IP -Header $Header_NTNX_Creds
+# Create BootCampInfra Project
+$response=AddVMwareToBootcampInfra -IP $PC_IP -Header $Header_NTNX_Creds
 Write-Output $response
 
 Write-Output "*************************************************"
-Write-Output "All steps done for Era bootcamp"
+Write-Output "All steps done for Calm bootcamp"
 Write-Output "*************************************************"
 
 # Remove the loaded modules from memory
@@ -222,4 +227,4 @@ remove-module common_mod
 remove-module pe_mod
 remove-module pc_mod
 remove-module vmware_mod
-remove-module era_mod
+remove-module calm_mod

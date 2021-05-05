@@ -123,16 +123,16 @@ foreach($image in $images){
     Write-Output $response
 }
 
-# Deploy the AutoAD and wait till ready before moving forward
-$response=DeployAutoAD -vm_cluster_name $vm_cluster_name -AutoAD $AutoAD
-Write-Output $response
-
 # Deploy the CentOS and Windows 2016 templates
 $templates=@('Windows2016','CentOS')
 foreach($template in $templates){
     $response=DeployVMTemplate -vm_cluster_name $vm_cluster_name -templ_name $template
     write-output $response
 }
+
+# Deploy the AutoAD and wait till ready before moving forward
+$response=DeployAutoAD -vm_cluster_name $vm_cluster_name -AutoAD $AutoAD
+Write-Output $response
 
 # Disconnecting from the vCenter
 $response=DisconnectvCenter
@@ -155,11 +155,9 @@ Write-Output $response
 $response=DeployPC -IP $PE_IP -AutoAD $AutoAD -Header $Header_NTNX_Creds -PC_IP $PC_IP -GW $GW
 write-output $response
 
-
 # Check PE registered to PC
 $response=PERegistered -IP $PE_IP -Header $Header_NTNX_Creds
 Write-Output $response
-
 
 Write-Output "*************************************************"
 Write-Output "Concentrating on Nutanix PC environment.."
@@ -194,9 +192,8 @@ $response=PCLCMRun -IP $PC_IP -Header $Header_NTNX_Creds
 Write-Output $response
 
 Write-Output "*************************************************"
-Write-Output "All steps done for Public Cloud bootcamp"
+Write-Output "All steps done for Private Cloud bootcamp"
 Write-Output "*************************************************"
-
 
 # Remove the loaded modules from memory
 remove-module common_mod

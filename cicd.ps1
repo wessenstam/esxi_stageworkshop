@@ -15,6 +15,8 @@ Import-Module $module_dir/common_mod.psm1
 Import-Module $module_dir/pe_mod.psm1
 Import-Module $module_dir/pc_mod.psm1
 Import-Module $module_dir/vmware_mod.psm1
+Import-Module $module_dir/era_mod.psm1
+Import-Module $module_dir/cicd_mod.psm1
 
 # **********************************************************************************
 # Setting the needed variables
@@ -123,10 +125,6 @@ foreach($image in $images){
     Write-Output $response
 }
 
-# Deploy the AutoAD and wait till ready before moving forward
-$response=DeployAutoAD -vm_cluster_name $vm_cluster_name -AutoAD $AutoAD
-Write-Output $response
-
 # Deploy the CentOS templates
 $templates=@('CentOS')
 foreach($template in $templates){
@@ -140,6 +138,10 @@ Write-Output $response
 
 # Deploy Era
 $response=DeployEraVM -vm_cluster_name $vm_cluster_name
+Write-Output $response
+
+# Deploy the AutoAD and wait till ready before moving forward
+$response=DeployAutoAD -vm_cluster_name $vm_cluster_name -AutoAD $AutoAD
 Write-Output $response
 
 # Disconnecting from the vCenter
@@ -163,11 +165,9 @@ Write-Output $response
 $response=DeployPC -IP $PE_IP -AutoAD $AutoAD -Header $Header_NTNX_Creds -PC_IP $PC_IP -GW $GW
 write-output $response
 
-
 # Check PE registered to PC
 $response=PERegistered -IP $PE_IP -Header $Header_NTNX_Creds
 Write-Output $response
-
 
 Write-Output "*************************************************"
 Write-Output "Concentrating on Nutanix PC environment.."
@@ -205,6 +205,18 @@ Write-Output $response
 $response=PCLCMRun -IP $PC_IP -Header $Header_NTNX_Creds
 Write-Output $response
 
+# Add VMware as Provider for Calm
+$response=VMwareProviderCalm -IP $PC_IP -Header $Header_NTNX_Creds -VCENTER $VCENTER -password $password
+Write-Output $response
+
+# Create BootCampInfra Project
+$response=AddPRojectBootcampInfra -IP $PC_IP -Header $Header_NTNX_Creds
+Write-Output $response
+
+# Create BootCampInfra Project
+$response=AddVMwareToBootcampInfra -IP $PC_IP -Header $Header_NTNX_Creds
+Write-Output $response
+
 Write-Output "*************************************************"
 Write-Output "Configuring Era"
 Write-Output "*************************************************"
@@ -226,7 +238,7 @@ $response=EraMariaDBNetwork -Era_IP $Era_IP -Header $Header_NTNX_Creds
 Write-Output $response
 
 Write-Output "*************************************************"
-Write-Output "All steps done for Public Cloud bootcamp"
+Write-Output "All steps done for CI/CD bootcamp"
 Write-Output "*************************************************"
 
 
@@ -235,3 +247,7 @@ remove-module common_mod
 remove-module pe_mod
 remove-module pc_mod
 remove-module vmware_mod
+remove-module era_mod
+remove-module cicd_mod
+ 
+ 
