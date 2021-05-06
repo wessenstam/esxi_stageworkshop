@@ -32,11 +32,12 @@ As ESXi not supports the same Nutanix products as AHV, this staging script will 
 4. Objects
 5. Era
 6. Leap
-7. Karbon
 
+> The latest version of PC will be deployed
 ## Staging requirements
 
 As we have dependencies on VMware and some other for manipulating Linux machines, the script is built in PowerShell/PowerCLI. For the execution of the script, we are using a special build Docker container. The basis of the container has been the vmware/powercli Docker container version, too which small edits have been made so it can function for the ESXi Staging. This means that **Docker has to be installed and running on your machine**. There are a lot of articles on how to install Docker on your O/S. Follow this article to install Docker for your O/S <https://docs.docker.com/get-docker/>.
+Besides docker also **git** needs to be installed on your computer and **Nutanix VPN** needs to be installed and configured.
 
 > If you want to know more on the container, please read this <https://github.com/vmware/powerclicore>.
 
@@ -47,7 +48,7 @@ As we have dependencies on VMware and some other for manipulating Linux machines
 During the reservation of your cluster make sure you select the following:
 
 - Select the ESXi 6.5U1 as the hypervisor
-- Use AOS 5.19.1
+- Use AOS 5.19.1+
 - Leave all other option, maybe change the password, default
 - Reserve your cluster
 
@@ -55,13 +56,13 @@ After it's your time to use the cluster, follow these steps to get the staging r
 
 1. Run **git Clone <https://github.com/wessenstam/esxi_stageworkshop>** to pull the script and needed information
 2. CD into the location where the GitHub Repo has been pulled
-3. Create a file named **environment.env** with the needed parameters. These parameters are *PE password,IP address of the PE instance* **example; ThisisSecret,10.10.10.10**
+3. Create a file named **environment.env** with the needed parameters and save the file in the location of the clone. These parameters are *PE password,IP address of the PE instance* **example; ThisisSecret,10.10.10.10**
 4. Save the file
 5. Run the Powershell script using the below
    After you have installed Docker, you can use the following command to run the script:
 
    ```bash
-   docker run --rm -it -v "${PWD}":/script wessenstam/esxi_stage pwsh /script/stage_esxi.ps1
+   docker run --rm -it -v "${PWD}":/script wessenstam/esxi_stage pwsh /script/SCRIPTNAME.ps1
    ```
 
    Where:
@@ -70,7 +71,15 @@ After it's your time to use the cluster, follow these steps to get the staging r
    - -it; run in interactive mode, show the console output of the script
    - -v; "mount" the following path **${PWD}** (current directory) to the **/script** directory INSIDE the container
    - wessenstam/esx_staging; the name of the container image that is going to be run. It will be downloaded automatically if it doesn't exist on the machine.
-   - /script/stage_esxi.ps1; the name of the script including the location **INSIDE** the container. As we have mounted, using the **-v** parameter, the location on the machine that holds the script file to /script in the container, the container needs to be told the absolute full path.
+   - /script/**SCRIPTNAME**.ps1; the name of the script including the location **INSIDE** the container. As we have mounted, using the **-v** parameter, the location on the machine that holds the script file to /script in the container, the container needs to be told the absolute full path.
+
+   The following scripts are available:
+
+   1. **private_cloud.ps1**; for Private cloud workshops with PE and PC configured
+   2. **consolidated_storage.ps1**; For File server, File server manager and Objects workshops with PE and PC configured
+   3. **calm.ps1**; for Calm workshop with PE and PC configured
+   4. **era.ps1**; for Era related workshops with PE and PC configured
+   5. **cicd.ps1**; for CI/CD related workshop where PE, PC and Calm are configured
 
 ## Detailed run
 
