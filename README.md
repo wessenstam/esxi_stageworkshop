@@ -61,8 +61,16 @@ After it's your time to use the cluster, follow these steps to get the staging r
 5. Run the Powershell script using the below
    After you have installed Docker, you can use the following command to run the script:
 
+   For Linux and MacOS based machines:
+
    ```bash
    docker run --rm -it -v "${PWD}":/script wessenstam/esxi_stage pwsh /script/SCRIPTNAME.ps1
+   ```
+
+   For Windows based machines:
+
+   ```bash
+   docker run --rm -it -v ${PWD}:/script wessenstam/esxi_stage pwsh /script/SCRIPTNAME.ps1
    ```
 
    Where:
