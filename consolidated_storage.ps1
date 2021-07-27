@@ -119,7 +119,7 @@ Write-Output "Uploading needed images"
 New-ContentLibrary -Name "deploy" -Datastore "Images" | Out-Null
 
 # Upload needed images
-$images=@('esxi_ovas/AutoAD_Sysprep.ova','esxi_ovas/CentOS.ova','esxi_ovas/Windows2016.ova','esxi_ovas/WinTools-AHV.ova')
+$images=@('esxi_ovas/AutoAD_Sysprep.ova','esxi_ovas/CentOS.ova','esxi_ovas/Windows2016.ova','esxi_ovas/WinTools-AHV.ova','esxi_ovas/LinuxTools-VM.ova')
 foreach($image in $images){
     $response=UploadImage -image $image -nfs_host $nfs_host
     Write-Output $response
@@ -134,6 +134,10 @@ foreach($template in $templates){
 
 # Deploy the WinTools-VM
 $response=DeployWinToolsVM -vm_cluster_name $vm_cluster_name
+Write-Output $response
+
+# Deploy the WinTools-VM
+$response=DeployLinuxToolsVM -vm_cluster_name $vm_cluster_name
 Write-Output $response
 
 # Deploy the AutoAD and wait till ready before moving forward
@@ -217,9 +221,9 @@ $response=CreateObjects -IP $PC_IP -Header $Header_NTNX_Creds -password $passwor
 Write-Output $response
 
 
-Write-Output "*************************************************"
-Write-Output "All steps done for Public Cloud bootcamp"
-Write-Output "*************************************************"
+Write-Output "*********************************************************"
+Write-Output "All steps done for Consolidated Storage  on ESXi bootcamp"
+Write-Output "*********************************************************"
 
 # Remove the loaded modules from memory
 remove-module common_mod

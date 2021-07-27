@@ -2,10 +2,6 @@
 
 Staging ESXi HPOC systems
 
-## Remark
-
-Below is still in scaffolding!!! Nothing is yet GA!!
-
 ## TODO
 
 Below items are NOT YET in the script:
@@ -47,8 +43,8 @@ Besides docker also **git** needs to be installed on your computer and **Nutanix
 
 During the reservation of your cluster make sure you select the following:
 
-- Select the ESXi 6.5U1 as the hypervisor
-- Use AOS 5.19.1+
+- Select the ESXi 6.7U1 as the hypervisor
+- Use AOS 5.20
 - Leave all other option, maybe change the password, default
 - Reserve your cluster
 
@@ -84,10 +80,14 @@ After it's your time to use the cluster, follow these steps to get the staging r
    The following scripts are available:
 
    1. **private_cloud.ps1**; for Private cloud workshops with PE and PC configured
-   2. **consolidated_storage.ps1**; For File server, File server manager and Objects workshops with PE and PC configured
-   3. **calm.ps1**; for Calm workshop with PE and PC configured
-   4. **era.ps1**; for Era related workshops with PE and PC configured
-   5. **cicd.ps1**; for CI/CD related workshop where PE, PC and Calm are configured
+
+
+   To be realeased very soon:
+
+   1. **consolidated_storage.ps1**; For File server, File server manager and Objects workshops with PE and PC configured
+   2. **calm.ps1**; for Calm workshop with PE and PC configured
+   3. **era.ps1**; for Era related workshops with PE and PC configured
+   4. **cicd.ps1**; for CI/CD related workshop where PE, PC and Calm are configured
 
 ## Detailed run
 

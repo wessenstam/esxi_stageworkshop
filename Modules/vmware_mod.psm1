@@ -163,7 +163,22 @@ Function DeployWinToolsVM{
 
     return "WindowsTools VM has been created"
 }
+Function DeployLinuxToolsVM{
+    param(
+        [string] $vm_cluster_name
+    )
 
+    $vmhosts = Get-Cluster $vm_cluster_name | Get-VMhost
+    $ESXi_Host=$vmhosts[0]
+
+    # Deploy the Windows Tools VM and create the templates for Centos and Windows
+    
+    Write-Host "Deploying the LinuxTools VM via a Content Library in the Image Datastore"
+    Get-ContentLibraryitem -name 'LinuxTools-VM' | new-vm -Name 'LinuxTools-VM' -vmhost $ESXi_Host -Datastore "vmContainer1" | Out-Null
+    get-vm 'LinuxTools-VM' | Get-NetworkAdapter | Set-NetworkAdapter -NetworkName 'Secondary' -Confirm:$false | Out-Null
+
+    return "LinuxTools VM has been created"
+}
 Function DeployEraVM{
     param(
         [string] $vm_cluster_name
