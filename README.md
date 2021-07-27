@@ -96,7 +96,7 @@ The script will do the following:
 1. Using REST API for PE:
 
    1. Accept the EULA
-   2. Disable Pulso
+   2. Disable Pulse
    3. Change the Storage Pool name to SP01
    4. Change the defafult-XXX storage container name to default
    5. Create an Images storage container
