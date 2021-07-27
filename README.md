@@ -81,8 +81,7 @@ After it's your time to use the cluster, follow these steps to get the staging r
 
    1. **private_cloud.ps1**; for Private cloud workshops with PE and PC configured
 
-
-   To be realeased very soon:
+   Future work (possible):
 
    1. **consolidated_storage.ps1**; For File server, File server manager and Objects workshops with PE and PC configured
    2. **calm.ps1**; for Calm workshop with PE and PC configured
